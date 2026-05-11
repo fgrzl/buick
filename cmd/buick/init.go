@@ -17,8 +17,8 @@ func runInit(args []string) int {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage: buick init [flags]\n\n")
 		_, _ = fmt.Fprintf(fs.Output(), "Generate a local Buick CA, issue a leaf TLS certificate for hostnames in the\n")
 		_, _ = fmt.Fprintf(fs.Output(), "config, write PEMs to proxy.cert_file / proxy.key_file, and install the CA\n")
-		_, _ = fmt.Fprintf(fs.Output(), "into this machine's trust stores (Chrome/Edge/Safari use the OS store;\n")
-		_, _ = fmt.Fprintf(fs.Output(), "Firefox is updated when certutil/NSS is available).\n\n")
+		_, _ = fmt.Fprintf(fs.Output(), "into this machine's trust store where supported (Windows / macOS login keychain /\n")
+		_, _ = fmt.Fprintf(fs.Output(), "Debian-like Linux with sudo). Firefox NSS is not modified; use -skip-trust to write PEMs only.\n\n")
 		_, _ = fmt.Fprintf(fs.Output(), "Run on the host before docker compose up so browsers trust HTTPS to *.localhost.\n\n")
 		fs.PrintDefaults()
 	}
@@ -26,7 +26,7 @@ func runInit(args []string) int {
 	configPath := fs.String("config", "", "path to buick YAML (e.g. compose.buick.yml)")
 	uninstall := fs.Bool("uninstall", false, "remove the Buick CA from trust stores (uses buick-root-ca.pem next to the leaf cert)")
 	skipTrust := fs.Bool("skip-trust", false, "write PEM files only; do not install the CA")
-	noFirefox := fs.Bool("no-firefox", false, "do not install or remove the CA in Firefox/NSS")
+	noFirefox := fs.Bool("no-firefox", false, "no-op (reserved); Firefox NSS is never modified by buick init")
 
 	if err := fs.Parse(args); err != nil {
 		return 2

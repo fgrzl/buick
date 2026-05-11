@@ -113,7 +113,7 @@ The original client `Host` header is preserved on the proxied request (not rewri
 
 ## TLS for local HTTPS
 
-**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf certificate for the hostnames in your YAML, writes `proxy.cert_file` / `proxy.key_file`, and installs the CA into common trust stores so browsers accept HTTPS to your `services` hostnames.
+**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf certificate for the hostnames in your YAML, writes `proxy.cert_file` / `proxy.key_file`, and installs the CA using **OS tools** (no extra Go modules): **Windows** (`certutil` current-user root store), **macOS** (`security` + login keychain), **Debian-like Linux** (`sudo cp` into `/usr/local/share/ca-certificates` and `update-ca-certificates`). Other platforms, or when install fails, use **`--skip-trust`** and import the generated **`buick-root-ca.pem`** manually. **Firefox NSS** is not modified; Chromium-based browsers on Windows/macOS typically use the OS store.
 
 When `proxy.https` is set, **buickd** still ensures PEM material exists at `cert_file` and `key_file`:
 

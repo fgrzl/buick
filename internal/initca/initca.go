@@ -16,9 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smallstep/truststore"
-
 	"github.com/fgrzl/buick/internal/config"
+	"github.com/fgrzl/buick/internal/trust"
 )
 
 const (
@@ -30,13 +29,14 @@ const (
 // Options controls trust installation for GenerateAndTrust.
 type Options struct {
 	SkipTrust bool // only write PEM files
-	NoFirefox bool // omit Firefox/NSS trust store
+	// NoFirefox is a no-op: this module does not modify Firefox NSS (no third-party trust tooling).
+	NoFirefox bool
 }
 
 // GenerateAndTrust creates a local CA, issues a leaf TLS certificate for the
 // hostnames derived from cfg, writes leaf PEMs to cfg's cert_file/key_file,
-// writes the CA next to the leaf cert, and installs the CA into system (and
-// optionally Firefox) trust stores.
+// writes the CA next to the leaf cert, and installs the CA using OS tools on
+// Windows, macOS, and Debian-like Linux (see internal/trust).
 func GenerateAndTrust(cfg *config.Root, o Options) error {
 	if cfg == nil {
 		return errors.New("config is nil")
@@ -145,11 +145,7 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 		return nil
 	}
 
-	var opts []truststore.Option
-	if !o.NoFirefox {
-		opts = append(opts, truststore.WithFirefox())
-	}
-	if err := truststore.Install(caCert, opts...); err != nil {
+	if err := trust.Install(caCertPath, trust.Options{NoFirefox: o.NoFirefox}); err != nil {
 		return fmt.Errorf("install CA in trust stores: %w (leaf PEMs were written; you can retry or use -skip-trust)", err)
 	}
 	return nil
@@ -177,26 +173,7 @@ func uninstallExistingCA(caCertPath string, o Options) error {
 }
 
 func uninstallCAFile(caCertPath string, o Options) error {
-	data, err := os.ReadFile(caCertPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	block, _ := pem.Decode(data)
-	if block == nil || block.Type != "CERTIFICATE" {
-		return errors.New("invalid CA PEM at " + caCertPath)
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return err
-	}
-	var opts []truststore.Option
-	if !o.NoFirefox {
-		opts = append(opts, truststore.WithFirefox())
-	}
-	if err := truststore.Uninstall(cert, opts...); err != nil {
+	if err := trust.Uninstall(caCertPath, trust.Options{NoFirefox: o.NoFirefox}); err != nil {
 		return fmt.Errorf("uninstall CA: %w", err)
 	}
 	return nil
