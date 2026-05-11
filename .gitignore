@@ -1,0 +1,44 @@
+# Binaries (local go build / release names)
+/buick
+/buick.exe
+/buickd
+/buickd.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and debug
+*.test
+*.out
+*.prof
+cpu.prof
+mem.prof
+
+# Coverage
+*.coverprofile
+coverage.html
+coverage.out
+
+# Dependency directories (remove if you commit vendor)
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Local TLS material (never commit private keys)
+/certs/*.pem
+/certs/*.key
+
+# Environment
+.env
+.env.*
+
+# Editors and OS
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

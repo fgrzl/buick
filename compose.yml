@@ -1,0 +1,48 @@
+# Integration stack: three echo backends and buickd on a private network.
+# Host ports 18080 (HTTP) and 18443 (HTTPS) map to buick inside the stack.
+#
+#   docker compose up -d --build
+#   BUICK_INTEGRATION=1 go test -tags=integration ./tests/integration/...
+#   docker compose down
+
+services:
+  service1:
+    image: hashicorp/http-echo:1.0.0
+    command: ["-listen=:8080", "-text=service1"]
+    networks: [buick]
+
+  service2:
+    image: hashicorp/http-echo:1.0.0
+    command: ["-listen=:8080", "-text=service2"]
+    networks: [buick]
+
+  service3:
+    image: hashicorp/http-echo:1.0.0
+    command: ["-listen=:8080", "-text=service3"]
+    networks: [buick]
+
+  buickd:
+    build:
+      context: .
+      dockerfile: cmd/buickd/Dockerfile
+    # Distroless nonroot cannot create PEMs on a fresh named volume; root is acceptable for this local-only stack.
+    user: "0:0"
+    command: ["--config", "/etc/buick/buick.yml"]
+    volumes:
+      - ./compose.buick.yml:/etc/buick/buick.yml:ro
+      - buick_certs:/etc/buick/certs
+    ports:
+      - "18080:8080"
+      - "18443:8443"
+    networks: [buick]
+    depends_on:
+      - service1
+      - service2
+      - service3
+
+networks:
+  buick:
+    name: buick-integration
+
+volumes:
+  buick_certs:

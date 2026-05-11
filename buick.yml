@@ -1,0 +1,18 @@
+proxy:
+  http: ":80"
+  https: ":443"
+  cert_file: "./certs/localhost.pem"
+  key_file: "./certs/localhost-key.pem"
+
+services:
+  service1.localhost:
+    target: "http://127.0.0.1:8080"
+
+  service2.localhost:
+    target: "http://127.0.0.1:8081"
+
+  service3.localhost:
+    target: "http://127.0.0.1:8082"
+    websocket: true
+    read_timeout: "168h"
+    write_timeout: "168h"

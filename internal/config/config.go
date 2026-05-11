@@ -1,0 +1,212 @@
+// Package config loads and validates Buick YAML configuration.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Root is the top-level configuration document.
+type Root struct {
+	Proxy    Proxy              `yaml:"proxy"`
+	Services map[string]Service `yaml:"services"`
+}
+
+// Proxy holds listener and TLS file paths.
+type Proxy struct {
+	HTTP     string `yaml:"http"`
+	HTTPS    string `yaml:"https"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+}
+
+// Service describes one hostname route.
+type Service struct {
+	Target       string `yaml:"target"`
+	WebSocket    bool   `yaml:"websocket"`
+	ReadTimeout  string `yaml:"read_timeout"`
+	WriteTimeout string `yaml:"write_timeout"`
+}
+
+// Resolved bundles parsed fields used at runtime.
+type Resolved struct {
+	Host         string
+	Target       *url.URL
+	WebSocket    bool
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+const (
+	defaultHTTPReadTimeout  = 60 * time.Second
+	defaultHTTPWriteTimeout = 60 * time.Second
+	defaultWSReadTimeout    = 168 * time.Hour
+	defaultWSWriteTimeout   = 168 * time.Hour
+)
+
+// Load reads and parses a YAML config file.
+func Load(path string) (*Root, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	var root Root
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parse yaml: %w", err)
+	}
+	return &root, nil
+}
+
+// Validate checks proxy and service entries and returns resolved routes.
+func Validate(root *Root) ([]Resolved, error) {
+	if root == nil {
+		return nil, errors.New("config is nil")
+	}
+	if strings.TrimSpace(root.Proxy.HTTP) == "" && strings.TrimSpace(root.Proxy.HTTPS) == "" {
+		return nil, errors.New("proxy: at least one of http or https must be set")
+	}
+	if len(root.Services) == 0 {
+		return nil, errors.New("services: at least one hostname mapping is required")
+	}
+
+	https := strings.TrimSpace(root.Proxy.HTTPS) != ""
+	if https {
+		if strings.TrimSpace(root.Proxy.CertFile) == "" {
+			return nil, errors.New("proxy: cert_file is required when https is set")
+		}
+		if strings.TrimSpace(root.Proxy.KeyFile) == "" {
+			return nil, errors.New("proxy: key_file is required when https is set")
+		}
+	}
+
+	var resolved []Resolved
+	seen := make(map[string]struct{})
+	for host, svc := range root.Services {
+		nh := NormalizeHost(host)
+		if nh == "" {
+			return nil, fmt.Errorf("services: invalid empty hostname for entry %q", host)
+		}
+		if _, dup := seen[nh]; dup {
+			return nil, fmt.Errorf("services: duplicate hostname after normalization: %q", nh)
+		}
+		seen[nh] = struct{}{}
+
+		t := strings.TrimSpace(svc.Target)
+		if t == "" {
+			return nil, fmt.Errorf("services[%q]: target is required", host)
+		}
+		u, err := url.Parse(t)
+		if err != nil {
+			return nil, fmt.Errorf("services[%q]: target parse: %w", host, err)
+		}
+		if !u.IsAbs() || u.Scheme == "" || u.Host == "" {
+			return nil, fmt.Errorf("services[%q]: target must be an absolute URL with host (got %q)", host, t)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("services[%q]: target scheme must be http or https (got %q)", host, u.Scheme)
+		}
+
+		rt, wt, err := parseTimeouts(svc)
+		if err != nil {
+			return nil, fmt.Errorf("services[%q]: %w", host, err)
+		}
+
+		resolved = append(resolved, Resolved{
+			Host:         nh,
+			Target:       u,
+			WebSocket:    svc.WebSocket,
+			ReadTimeout:  rt,
+			WriteTimeout: wt,
+		})
+	}
+	return resolved, nil
+}
+
+func parseTimeouts(s Service) (read, write time.Duration, err error) {
+	defaultRead, defaultWrite := defaultHTTPReadTimeout, defaultHTTPWriteTimeout
+	if s.WebSocket {
+		defaultRead, defaultWrite = defaultWSReadTimeout, defaultWSWriteTimeout
+	}
+
+	read = defaultRead
+	write = defaultWrite
+
+	if strings.TrimSpace(s.ReadTimeout) != "" {
+		read, err = time.ParseDuration(strings.TrimSpace(s.ReadTimeout))
+		if err != nil {
+			return 0, 0, fmt.Errorf("read_timeout: %w", err)
+		}
+		if read <= 0 {
+			return 0, 0, errors.New("read_timeout must be positive")
+		}
+	}
+	if strings.TrimSpace(s.WriteTimeout) != "" {
+		write, err = time.ParseDuration(strings.TrimSpace(s.WriteTimeout))
+		if err != nil {
+			return 0, 0, fmt.Errorf("write_timeout: %w", err)
+		}
+		if write <= 0 {
+			return 0, 0, errors.New("write_timeout must be positive")
+		}
+	}
+	return read, write, nil
+}
+
+// NormalizeHost strips bracketed IPv6 ports and trailing :port for matching.
+func NormalizeHost(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return ""
+	}
+	// IPv6 with port: [::1]:8080
+	if strings.HasPrefix(host, "[") {
+		if i := strings.Index(host, "]"); i >= 0 {
+			return host[1:i]
+		}
+		return strings.TrimPrefix(host, "[")
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return strings.ToLower(h)
+	}
+	return host
+}
+
+// MaxEffectiveTimeouts returns server-wide read/write caps from resolved routes.
+func MaxEffectiveTimeouts(routes []Resolved) (read, write time.Duration) {
+	read, write = defaultHTTPReadTimeout, defaultHTTPWriteTimeout
+	for _, r := range routes {
+		if r.ReadTimeout > read {
+			read = r.ReadTimeout
+		}
+		if r.WriteTimeout > write {
+			write = r.WriteTimeout
+		}
+	}
+	return read, write
+}
+
+// HostnamesForCert returns unique hostnames (including normalized keys) for TLS SANs.
+func HostnamesForCert(root *Root) []string {
+	if root == nil || root.Services == nil {
+		return []string{"localhost"}
+	}
+	set := map[string]struct{}{"localhost": {}, "127.0.0.1": {}, "::1": {}}
+	for h := range root.Services {
+		n := NormalizeHost(h)
+		if n != "" {
+			set[n] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	return out
+}

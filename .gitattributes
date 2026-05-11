@@ -1,0 +1,17 @@
+# Normalize line endings
+* text=auto
+
+# Source and config: LF in the repo
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+**/Dockerfile text eol=lf
+LICENSE text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Go diffs
+*.go diff=golang
