@@ -7,18 +7,21 @@
 
 services:
   service1:
-    image: hashicorp/http-echo:1.0.0
-    command: ["-listen=:8080", "-text=service1"]
+    image: nginx:1.27-alpine
+    volumes:
+      - ./tests/integration/nginx/service1.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [buick]
 
   service2:
-    image: hashicorp/http-echo:1.0.0
-    command: ["-listen=:8080", "-text=service2"]
+    image: nginx:1.27-alpine
+    volumes:
+      - ./tests/integration/nginx/service2.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [buick]
 
   service3:
-    image: hashicorp/http-echo:1.0.0
-    command: ["-listen=:8080", "-text=service3"]
+    image: nginx:1.27-alpine
+    volumes:
+      - ./tests/integration/nginx/service3.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [buick]
 
   buickd:
@@ -31,9 +34,6 @@ services:
     volumes:
       - ./compose.buick.yml:/etc/buick/buick.yml:ro
       - buick_certs:/etc/buick/certs
-    ports:
-      - "18080:8080"
-      - "18443:8443"
     networks: [buick]
     depends_on:
       - service1

@@ -39,7 +39,7 @@ go build -o buick ./cmd/buick
 
 ## Usage
 
-Build and run the proxy (from a clone, or your own build pipeline):
+Build and run the proxy (from a clone, or your own build pipeline). The checked-in **`buick.yml`** uses **`http://service1:8080`**-style upstreams so names match **Docker Compose service DNS** on a shared user-defined network (see repo **`compose.yml`**). For **`buickd` on your laptop** with apps on `127.0.0.1`, start from **`buick.host.example.yml`** or set `target` to `http://127.0.0.1:<port>`.
 
 ```bash
 go build -o buickd ./cmd/buickd
@@ -186,7 +186,7 @@ Then start Compose. **buickd** will **not** overwrite existing PEMs; trust comes
 
 ## Integration tests (Docker)
 
-The repo includes **`compose.yml`** with three [http-echo](https://github.com/hashicorp/http-echo) `1.0.0` backends (`service1`–`service3`) and a **buickd** service built from **`cmd/buickd/Dockerfile`**. **buickd** reads **`compose.buick.yml`** (HTTP **8080**, HTTPS **8443** inside the stack; published as **18080** / **18443** on the host). **buickd** runs as **`user: "0:0"`** in that file so it can write generated TLS material into the named `buick_certs` volume (distroless’s default nonroot user cannot create files there on a fresh volume).
+The repo includes **`compose.yml`** with three sample **nginx** backends (`service1`–`service3`, configs under **`tests/integration/nginx/`**) and a **buickd** service built from **`cmd/buickd/Dockerfile`**. **buickd** reads **`compose.buick.yml`** (HTTP **8080**, HTTPS **8443** inside the stack; published as **18080** / **18443** on the host). **buickd** runs as **`user: "0:0"`** in that file so it can write generated TLS material into the named `buick_certs` volume (distroless’s default nonroot user cannot create files there on a fresh volume).
 
 ```bash
 docker compose up -d --build

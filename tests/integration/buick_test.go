@@ -3,7 +3,9 @@
 package integration
 
 import (
+	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +13,54 @@ import (
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("BUICK_INTEGRATION") == "" {
+		os.Exit(m.Run())
+	}
+	if err := waitForBuickStack(90 * time.Second); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "integration: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
+// waitForBuickStack polls until buickd accepts HTTP for a routed host (covers CI right after docker compose up).
+func waitForBuickStack(timeout time.Duration) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	base := httpAddr()
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), client.Timeout)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/", nil)
+		if err != nil {
+			cancel()
+			lastErr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		req.Host = "service1.localhost"
+		res, err := client.Do(req)
+		cancel()
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Second)
+			continue
+		}
+		body, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		if res.StatusCode == http.StatusOK && strings.Contains(string(body), "service1") {
+			return nil
+		}
+		lastErr = fmt.Errorf("status %d", res.StatusCode)
+		time.Sleep(time.Second)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("timed out after %v waiting for buickd at %s (run: docker compose up -d --build from repo root): %w", timeout, base, lastErr)
+	}
+	return fmt.Errorf("timed out after %v waiting for buickd at %s", timeout, base)
+}
 
 func httpAddr() string {
 	if v := os.Getenv("BUICK_HTTP_ADDR"); v != "" {
