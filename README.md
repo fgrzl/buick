@@ -39,29 +39,50 @@ go build -o buick ./cmd/buick
 
 ## Usage
 
-Build and run the proxy (from a clone, or your own build pipeline). The checked-in **`buick.yml`** uses **`http://service1:8080`**-style upstreams so names match **Docker Compose service DNS** on a shared user-defined network (see repo **`compose.yml`**). For **`buickd` on your laptop** with apps on `127.0.0.1`, start from **`buick.host.example.yml`** or set `target` to `http://127.0.0.1:<port>`.
+Build the daemon from a clone:
 
 ```bash
 go build -o buickd ./cmd/buickd
-./buickd --config ./buick.yml
 ```
 
-Validate configuration:
+### Config files in this repo
+
+| File | Role |
+|------|------|
+| **`compose.yml`** | Local integration stack: **nginx** backends `service1`–`service3`, **buickd** on network `buick-integration`, host ports **18080** (HTTP) / **18443** (HTTPS). |
+| **`compose.buick.yml`** | Config **inside** that stack: listens **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams **`http://service1:8080`** (Compose DNS names). |
+| **`buick.yml`** | Same upstream style as Compose (`http://serviceN:8080`) for **in-network** routing; **`./certs/`** paths suit bind-mounting or generating PEMs on the host. |
+| **`buick.host.example.yml`** | Example when **buickd runs on the host** and upstreams are on **`127.0.0.1`** ports. Copy or merge into your own file. |
+
+### Run the sample stack (Docker)
+
+From the repository root (builds **buickd** image, starts nginx + proxy):
 
 ```bash
-buick --check --config ./buick.yml
+docker compose up -d --build
 ```
 
-Print the resolved routing table (normalized host to upstream URL):
+Then open **http://127.0.0.1:18080/** with `Host: service1.localhost` (or add `127.0.0.1 service1.localhost` to your hosts file and use the hostname in the browser).
+
+### Run buickd on the host
+
+Use **`buick.host.example.yml`** (or equivalent `target: "http://127.0.0.1:…"`) so upstreams resolve. Running **`./buickd --config ./buick.yml`** on the laptop **without** Docker DNS for `service1` will not reach the sample upstreams.
 
 ```bash
-buick --print-routes --config ./buick.yml
+./buickd --config ./buick.host.example.yml
 ```
 
-**Prepare TLS and trust on your machine** (recommended before first HTTPS in the browser; uses the same YAML as `buickd`):
+Validate or print routes (point `--config` at the file you actually use):
 
 ```bash
-buick init --config ./buick.yml
+buick --check --config ./buick.host.example.yml
+buick --print-routes --config ./compose.buick.yml
+```
+
+**Prepare TLS and trust on your machine** (paths and SANs follow the YAML you pass in):
+
+```bash
+buick init --config ./buick.host.example.yml
 ```
 
 See `buick init -h` for flags such as `--skip-trust` (PEM files only) and `--uninstall`.
@@ -76,7 +97,7 @@ Top-level fields:
 
 Each `services` entry maps a hostname to an upstream:
 
-- `target`: absolute `http://` or `https://` URL for the upstream.
+- `target`: absolute `http://` or `https://` URL for the upstream. The hostname in the URL is whatever **buickd** must dial: use **Compose service names** (for example **`http://api:8080`**) when **buickd** shares a user-defined network with the backend; use **`http://host.docker.internal:PORT`** when the backend listens on the **host** and **buickd** runs in a container; use **`http://127.0.0.1:PORT`** when **buickd** runs on the **same machine** as the backend.
 - `websocket`: when true, disables response buffering (`FlushInterval`) suitable for upgrades.
 - `read_timeout` / `write_timeout`: optional `time.ParseDuration` strings. Defaults are 60s for normal HTTP and 168h for websocket services unless overridden.
 
@@ -103,7 +124,7 @@ If you skip **`buick init`**, the OS or browser will warn until you trust that c
 
 ## Docker Compose recipe
 
-Buick does not ship a `compose.yml`; copy the pieces below into **your** project’s Compose file.
+This repository **does** ship **`compose.yml`** + **`compose.buick.yml`** for the integration stack (see [Integration tests](#integration-tests-docker)). For **your** application, copy or adapt the patterns below into your own Compose file.
 
 ### 1. Example `docker-compose.yml` (buickd + persisted certs)
 
@@ -154,7 +175,7 @@ services:
 
 Upstream ports here are **8080**, **8081**, and so on for each app on the host. **buickd** listens on **80** / **443** in this example, so there is no port clash with those upstreams on the same host.
 
-If **buickd** runs in the **same** Compose project as your APIs, put every service on one user-defined network and use **`http://service1:8080`** style targets instead of `host.docker.internal`.
+If **buickd** runs in the **same** Compose project as your APIs, put every service on one user-defined network and use **`http://service1:8080`** style targets instead of `host.docker.internal` (same pattern as **`buick.yml`** / **`compose.buick.yml`** in this repo).
 
 ### 3. First run and trust (low friction)
 
@@ -186,7 +207,7 @@ Then start Compose. **buickd** will **not** overwrite existing PEMs; trust comes
 
 ## Integration tests (Docker)
 
-The repo includes **`compose.yml`** with three sample **nginx** backends (`service1`–`service3`, configs under **`tests/integration/nginx/`**) and a **buickd** service built from **`cmd/buickd/Dockerfile`**. **buickd** reads **`compose.buick.yml`** (HTTP **8080**, HTTPS **8443** inside the stack; published as **18080** / **18443** on the host). **buickd** runs as **`user: "0:0"`** in that file so it can write generated TLS material into the named `buick_certs` volume (distroless’s default nonroot user cannot create files there on a fresh volume).
+The repo includes **`compose.yml`** with three sample **nginx** backends (`service1`–`service3`, configs under **`tests/integration/nginx/`**) and a **buickd** service built from **`cmd/buickd/Dockerfile`**. **buickd** reads **`compose.buick.yml`** (HTTP **8080**, HTTPS **8443** inside the stack; published as **18080** / **18443** on the host). **buickd** runs as **`user: "0:0"`** in that file so it can write generated TLS material into the named **`buick_certs`** volume (distroless’s default nonroot user cannot create files there on a fresh volume).
 
 ```bash
 docker compose up -d --build
@@ -194,7 +215,9 @@ BUICK_INTEGRATION=1 go test -tags=integration ./tests/integration/...
 docker compose down
 ```
 
-Override the default host URLs if needed: **`BUICK_HTTP_ADDR`**, **`BUICK_HTTPS_ADDR`**.
+With **`BUICK_INTEGRATION=1`**, tests wait (up to **90s**) for **http://127.0.0.1:18080** to serve the stack so CI is not flaky right after `docker compose up`.
+
+Override the default probe URLs if needed: **`BUICK_HTTP_ADDR`**, **`BUICK_HTTPS_ADDR`**.
 
 ## Graceful shutdown
 

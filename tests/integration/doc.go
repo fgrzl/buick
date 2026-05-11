@@ -1,7 +1,8 @@
 // Package integration holds docker-compose-backed integration tests for buickd.
-// Run the stack from the repository root:
 //
-//	docker compose up -d --build
+// From the repository root, start the stack (nginx backends + buickd; see ../../compose.yml
+// and ../../compose.buick.yml), then run:
+//
 //	BUICK_INTEGRATION=1 go test -tags=integration ./tests/integration/...
 //	docker compose down
 //

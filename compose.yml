@@ -1,4 +1,4 @@
-# Integration stack: three echo backends and buickd on a private network.
+# Integration stack: three nginx sample backends and buickd on a private network.
 # Host ports 18080 (HTTP) and 18443 (HTTPS) map to buick inside the stack.
 #
 #   docker compose up -d --build
