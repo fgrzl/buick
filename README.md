@@ -2,37 +2,69 @@
 
 Small HTTP/HTTPS reverse proxy for local development. It routes by `Host`, forwards with `httputil.ReverseProxy`, supports WebSocket upgrades, and reads a YAML service table.
 
-## Usage
-
 Two binaries:
 
 - **`buickd`** — HTTP/HTTPS reverse proxy (runs until stopped).
-- **`buick`** — developer CLI: `buick init …`, `buick --check`, `buick --print-routes`.
+- **`buick`** — developer CLI: validate config, print routes, TLS/CA setup (`buick init`), and related helpers.
 
-Build and run the proxy:
+## Install the `buick` CLI
+
+You need [Go](https://go.dev/dl/) **1.22 or newer** (matches this module’s `go` directive).
+
+**Install a released build from the module path** (binary name: `buick`):
+
+```bash
+go install github.com/fgrzl/buick/cmd/buick@latest
+```
+
+Put Go’s install directory on your `PATH` if it is not already (commonly **`$HOME/go/bin`** on Linux and macOS, **`%USERPROFILE%\go\bin`** on Windows). Then confirm:
+
+```bash
+buick --version
+```
+
+**Install from a clone of this repository** (builds whatever revision you have checked out):
+
+```bash
+go install ./cmd/buick
+```
+
+**Build without installing** (writes `buick` in the current directory):
+
+```bash
+go build -o buick ./cmd/buick
+```
+
+**Private forks or vanity imports:** If `go install` cannot fetch the module, configure [`GOPRIVATE`](https://go.dev/ref/mod#private-modules) and Git/SSH access for your host, or use `go install` from a local clone as above.
+
+## Usage
+
+Build and run the proxy (from a clone, or your own build pipeline):
 
 ```bash
 go build -o buickd ./cmd/buickd
 ./buickd --config ./buick.yml
 ```
 
-Build the CLI (same module):
-
-```bash
-go build -o buick ./cmd/buick
-```
-
 Validate configuration:
 
 ```bash
-./buick --check --config ./buick.yml
+buick --check --config ./buick.yml
 ```
 
 Print the resolved routing table (normalized host to upstream URL):
 
 ```bash
-./buick --print-routes --config ./buick.yml
+buick --print-routes --config ./buick.yml
 ```
+
+**Prepare TLS and trust on your machine** (recommended before first HTTPS in the browser; uses the same YAML as `buickd`):
+
+```bash
+buick init --config ./buick.yml
+```
+
+See `buick init -h` for flags such as `--skip-trust` (PEM files only) and `--uninstall`.
 
 ## Configuration
 
@@ -60,12 +92,14 @@ The original client `Host` header is preserved on the proxied request (not rewri
 
 ## TLS for local HTTPS
 
-When `proxy.https` is set, **buickd** ensures PEM material exists at `cert_file` and `key_file`:
+**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf certificate for the hostnames in your YAML, writes `proxy.cert_file` / `proxy.key_file`, and installs the CA into common trust stores so browsers accept HTTPS to your `services` hostnames.
 
-- If **both** files already exist, they are used as-is.
+When `proxy.https` is set, **buickd** still ensures PEM material exists at `cert_file` and `key_file`:
+
+- If **both** files already exist, they are used as-is (including files produced by **`buick init`** or **mkcert**).
 - If **either** file is missing, **buickd** generates a **self-signed** RSA certificate valid one year, with SANs for `localhost`, `127.0.0.1`, `::1`, and every hostname key under `services`.
 
-Your OS or browser will warn until you trust the certificate (import the PEM into the system trust store, or use a tool like `mkcert` and replace the files).
+If you skip **`buick init`**, the OS or browser will warn until you trust that certificate (manual import) or replace the PEMs (for example with **mkcert** as below).
 
 ## Docker Compose recipe
 
@@ -126,8 +160,16 @@ If **buickd** runs in the **same** Compose project as your APIs, put every servi
 
 ```bash
 mkdir -p certs
+```
+
+On the **host** (with the **`buick`** CLI [installed](#install-the-buick-cli)), point at the same config paths your Compose volume will use, then bring the stack up:
+
+```bash
+buick init --config ./buick.docker.yml
 docker compose up -d --build
 ```
+
+If you prefer not to use **`buick init`**, use one of the following.
 
 **Trust once (pick one):**
 

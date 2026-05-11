@@ -149,6 +149,9 @@ func applyForwardedHeaders(req *http.Request, forwardedHost string) {
 	if splitErr != nil {
 		clientIP = req.RemoteAddr
 	}
+	if clientIP == "" {
+		clientIP = "127.0.0.1"
+	}
 	if prior := req.Header.Get("X-Forwarded-For"); prior != "" {
 		req.Header.Set("X-Forwarded-For", prior+", "+clientIP)
 	} else {
