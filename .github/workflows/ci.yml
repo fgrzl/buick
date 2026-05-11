@@ -10,10 +10,17 @@ on:
 permissions:
   contents: read
 
+# Matrix runs checkout / setup-go / build on every OS. Docker Compose + integration tests
+# run on Linux only (hosted macOS/Windows runners are not used for the compose stack here).
+
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 2
 
     steps:
@@ -28,14 +35,6 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Start emulator
-        run: docker compose up -d
-
       - name: Run tests
-        env:
-          BUICK_INTEGRATION: "1"
-        run: go test -v -tags=integration ./...
+        run: go test -v ./...
 
-      - name: Stop emulator
-        if: always()
-        run: docker compose down
