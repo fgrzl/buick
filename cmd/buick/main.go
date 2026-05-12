@@ -69,7 +69,11 @@ func printRouteTable(routes []config.Resolved) {
 		if r.WebSocket {
 			flags = " websocket=true"
 		}
-		fmt.Printf("%s -> %s%s\n", r.Host, r.Target.String(), flags)
+		tgts := make([]string, len(r.Targets))
+		for i, u := range r.Targets {
+			tgts[i] = u.String()
+		}
+		fmt.Printf("%s -> %s%s\n", r.Host, strings.Join(tgts, ", "), flags)
 	}
 }
 

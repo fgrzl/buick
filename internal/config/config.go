@@ -29,16 +29,17 @@ type Proxy struct {
 
 // Service describes one hostname route.
 type Service struct {
-	Target       string `yaml:"target"`
-	WebSocket    bool   `yaml:"websocket"`
-	ReadTimeout  string `yaml:"read_timeout"`
-	WriteTimeout string `yaml:"write_timeout"`
+	Target       string   `yaml:"target"`
+	Targets      []string `yaml:"targets"`
+	WebSocket    bool     `yaml:"websocket"`
+	ReadTimeout  string   `yaml:"read_timeout"`
+	WriteTimeout string   `yaml:"write_timeout"`
 }
 
 // Resolved bundles parsed fields used at runtime.
 type Resolved struct {
 	Host         string
-	Target       *url.URL
+	Targets      []*url.URL // non-empty; round-robin when len > 1
 	WebSocket    bool
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
@@ -98,19 +99,36 @@ func Validate(root *Root) ([]Resolved, error) {
 		}
 		seen[nh] = struct{}{}
 
-		t := strings.TrimSpace(svc.Target)
-		if t == "" {
-			return nil, fmt.Errorf("services[%q]: target is required", host)
+		rawSingle := strings.TrimSpace(svc.Target)
+		var rawList []string
+		for _, s := range svc.Targets {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				rawList = append(rawList, s)
+			}
 		}
-		u, err := url.Parse(t)
-		if err != nil {
-			return nil, fmt.Errorf("services[%q]: target parse: %w", host, err)
+		if rawSingle != "" && len(rawList) > 0 {
+			return nil, fmt.Errorf("services[%q]: specify either target or targets, not both", host)
 		}
-		if !u.IsAbs() || u.Scheme == "" || u.Host == "" {
-			return nil, fmt.Errorf("services[%q]: target must be an absolute URL with host (got %q)", host, t)
+		if rawSingle == "" && len(rawList) == 0 {
+			return nil, fmt.Errorf("services[%q]: target or targets is required", host)
 		}
-		if u.Scheme != "http" && u.Scheme != "https" {
-			return nil, fmt.Errorf("services[%q]: target scheme must be http or https (got %q)", host, u.Scheme)
+
+		var urls []*url.URL
+		if len(rawList) > 0 {
+			for _, t := range rawList {
+				u, err := parseServiceTargetURL(host, t)
+				if err != nil {
+					return nil, err
+				}
+				urls = append(urls, u)
+			}
+		} else {
+			u, err := parseServiceTargetURL(host, rawSingle)
+			if err != nil {
+				return nil, err
+			}
+			urls = []*url.URL{u}
 		}
 
 		rt, wt, err := parseTimeouts(svc)
@@ -120,13 +138,27 @@ func Validate(root *Root) ([]Resolved, error) {
 
 		resolved = append(resolved, Resolved{
 			Host:         nh,
-			Target:       u,
+			Targets:      urls,
 			WebSocket:    svc.WebSocket,
 			ReadTimeout:  rt,
 			WriteTimeout: wt,
 		})
 	}
 	return resolved, nil
+}
+
+func parseServiceTargetURL(serviceHost, t string) (*url.URL, error) {
+	u, err := url.Parse(t)
+	if err != nil {
+		return nil, fmt.Errorf("services[%q]: target parse: %w", serviceHost, err)
+	}
+	if !u.IsAbs() || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("services[%q]: target must be an absolute URL with host (got %q)", serviceHost, t)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("services[%q]: target scheme must be http or https (got %q)", serviceHost, u.Scheme)
+	}
+	return u, nil
 }
 
 func parseTimeouts(s Service) (read, write time.Duration, err error) {

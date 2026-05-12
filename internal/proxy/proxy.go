@@ -9,7 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fgrzl/buick/internal/config"
@@ -22,9 +25,16 @@ type Router struct {
 	accessLog *slog.Logger
 	metrics   *mgmt.Metrics
 
-	mu      sync.RWMutex
-	routes  map[string]config.Resolved
-	proxies map[string]*httputil.ReverseProxy
+	mu     sync.RWMutex
+	routes map[string]config.Resolved
+	pools  map[string]*upstreamPool
+}
+
+// upstreamPool round-robins across one or more reverse proxies (one per target URL).
+type upstreamPool struct {
+	proxies []*httputil.ReverseProxy
+	targets []*url.URL
+	next    atomic.Uint64
 }
 
 // NewRouter builds a handler table from validated routes.
@@ -33,9 +43,9 @@ func NewRouter(routes []config.Resolved, log *slog.Logger, opts ...Option) *Rout
 		log = slog.Default()
 	}
 	rt := &Router{
-		log:     log,
-		routes:  buildRouteMap(routes),
-		proxies: make(map[string]*httputil.ReverseProxy),
+		log:    log,
+		routes: buildRouteMap(routes),
+		pools:  make(map[string]*upstreamPool),
 	}
 	for _, o := range opts {
 		o(rt)
@@ -67,7 +77,7 @@ func (rt *Router) Reload(routes []config.Resolved) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.routes = buildRouteMap(routes)
-	rt.proxies = make(map[string]*httputil.ReverseProxy)
+	rt.pools = make(map[string]*upstreamPool)
 	if rt.metrics != nil {
 		hosts := make([]string, 0, len(routes))
 		for _, r := range routes {
@@ -77,20 +87,49 @@ func (rt *Router) Reload(routes []config.Resolved) {
 	}
 }
 
-func (rt *Router) proxyFor(r config.Resolved) *httputil.ReverseProxy {
-	key := r.Host + "|" + r.Target.String()
+func poolKey(r config.Resolved) string {
+	var b strings.Builder
+	b.WriteString(r.Host)
+	b.WriteByte('|')
+	for i, u := range r.Targets {
+		if i > 0 {
+			b.WriteByte('|')
+		}
+		b.WriteString(u.String())
+	}
+	return b.String()
+}
+
+func (rt *Router) poolFor(r config.Resolved) *upstreamPool {
+	key := poolKey(r)
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if p, ok := rt.proxies[key]; ok {
+	if p, ok := rt.pools[key]; ok {
 		return p
 	}
-	p := newReverseProxy(r, rt.log)
-	rt.proxies[key] = p
+	p := newUpstreamPool(r, rt.log)
+	rt.pools[key] = p
 	return p
 }
 
-func newReverseProxy(r config.Resolved, log *slog.Logger) *httputil.ReverseProxy {
-	target := r.Target
+func newUpstreamPool(r config.Resolved, log *slog.Logger) *upstreamPool {
+	proxies := make([]*httputil.ReverseProxy, len(r.Targets))
+	for i := range r.Targets {
+		proxies[i] = newReverseProxy(r.Targets[i], r.WebSocket, log)
+	}
+	return &upstreamPool{proxies: proxies, targets: append([]*url.URL(nil), r.Targets...)}
+}
+
+func (p *upstreamPool) pick() int {
+	n := uint64(len(p.proxies))
+	if n == 0 {
+		return 0
+	}
+	i := p.next.Add(1)
+	return int((i - 1) % n)
+}
+
+func newReverseProxy(target *url.URL, websocket bool, log *slog.Logger) *httputil.ReverseProxy {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     false,
@@ -108,7 +147,7 @@ func newReverseProxy(r config.Resolved, log *slog.Logger) *httputil.ReverseProxy
 
 	rp := httputil.NewSingleHostReverseProxy(target)
 	rp.Transport = transport
-	if r.WebSocket {
+	if websocket {
 		rp.FlushInterval = -1
 	}
 
@@ -182,15 +221,17 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	lw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
 
-	rp := rt.proxyFor(route)
-	rp.ServeHTTP(lw, req)
+	pool := rt.poolFor(route)
+	ix := pool.pick()
+	chosen := pool.targets[ix]
+	pool.proxies[ix].ServeHTTP(lw, req)
 
 	dur := time.Since(start)
 	attrs := []any{
 		"method", req.Method,
 		"host", req.Host,
 		"path", req.URL.Path,
-		"target", route.Target.String(),
+		"target", chosen.String(),
 		"status", lw.status,
 		"duration_ms", dur.Milliseconds(),
 	}

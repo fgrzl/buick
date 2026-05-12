@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestEnsureDevPairGenerates(t *testing.T) {
+func TestShouldGenerateDevPairGivenMissingCertFilesWhenEnsureDevPairCalled(t *testing.T) {
 	dir := t.TempDir()
 	cert := filepath.Join(dir, "cert.pem")
 	key := filepath.Join(dir, "key.pem")
@@ -22,6 +22,16 @@ func TestEnsureDevPairGenerates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(key); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShouldReuseExistingPairGivenCertFilesAlreadyExistWhenEnsureDevPairCalled(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	key := filepath.Join(dir, "key.pem")
+
+	if _, err := EnsureDevPair(cert, key, []string{"dev.test", "127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}
 

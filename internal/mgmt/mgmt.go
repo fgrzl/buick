@@ -42,13 +42,21 @@ func Wrap(inner http.Handler, routes RouteReader, start time.Time, version, http
 			rs := routes.Routes()
 			out := make([]map[string]any, 0, len(rs))
 			for _, x := range rs {
-				out = append(out, map[string]any{
+				tgts := make([]string, len(x.Targets))
+				for i, u := range x.Targets {
+					tgts[i] = u.String()
+				}
+				row := map[string]any{
 					"host":             x.Host,
-					"target":           x.Target.String(),
+					"targets":          tgts,
 					"websocket":        x.WebSocket,
 					"read_timeout_ms":  x.ReadTimeout.Milliseconds(),
 					"write_timeout_ms": x.WriteTimeout.Milliseconds(),
-				})
+				}
+				if len(tgts) > 0 {
+					row["target"] = tgts[0]
+				}
+				out = append(out, row)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(out)

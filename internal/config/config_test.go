@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNormalizeHost(t *testing.T) {
+func TestShouldNormalizeHostForRoutingGivenRepresentativeHostStringsWhenNormalizeHostCalled(t *testing.T) {
 	tests := []struct {
 		in, want string
 	}{
@@ -24,7 +24,7 @@ func TestNormalizeHost(t *testing.T) {
 	}
 }
 
-func TestLoadAndValidate(t *testing.T) {
+func TestShouldResolveSingleTargetGivenYAMLWithTargetWhenLoadAndValidate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "buick.yml")
 	content := `
@@ -52,18 +52,20 @@ services:
 	if routes[0].Host != "app.localhost" {
 		t.Fatalf("host: got %q", routes[0].Host)
 	}
-	if routes[0].Target.String() != "http://127.0.0.1:9" {
-		t.Fatalf("target: got %q", routes[0].Target.String())
+	if routes[0].Targets[0].String() != "http://127.0.0.1:9" {
+		t.Fatalf("target: got %q", routes[0].Targets[0].String())
 	}
 }
 
-func TestValidateErrors(t *testing.T) {
+func TestShouldRejectConfigGivenEmptyServicesWhenValidate(t *testing.T) {
 	_, err := Validate(&Root{Proxy: Proxy{HTTP: ":80"}, Services: map[string]Service{}})
 	if err == nil {
 		t.Fatal("expected error for empty services")
 	}
+}
 
-	_, err = Validate(&Root{
+func TestShouldRejectConfigGivenNoListenersWhenValidate(t *testing.T) {
+	_, err := Validate(&Root{
 		Proxy: Proxy{HTTP: ""},
 		Services: map[string]Service{
 			"a": {Target: "http://x"},
@@ -72,8 +74,10 @@ func TestValidateErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no listeners")
 	}
+}
 
-	_, err = Validate(&Root{
+func TestShouldRejectConfigGivenHTTPSWithoutCertPathsWhenValidate(t *testing.T) {
+	_, err := Validate(&Root{
 		Proxy: Proxy{HTTP: ":80", HTTPS: ":443"},
 		Services: map[string]Service{
 			"a": {Target: "http://x"},
@@ -82,8 +86,10 @@ func TestValidateErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when https without cert paths")
 	}
+}
 
-	_, err = Validate(&Root{
+func TestShouldRejectConfigGivenMalformedTargetURLWhenValidate(t *testing.T) {
+	_, err := Validate(&Root{
 		Proxy: Proxy{HTTP: ":80"},
 		Services: map[string]Service{
 			"a": {Target: "not-a-url"},
@@ -92,8 +98,22 @@ func TestValidateErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for bad target URL")
 	}
+}
 
-	_, err = Validate(&Root{
+func TestShouldRejectConfigGivenBothTargetAndTargetsWhenValidate(t *testing.T) {
+	_, err := Validate(&Root{
+		Proxy: Proxy{HTTP: ":80"},
+		Services: map[string]Service{
+			"a": {Target: "http://x", Targets: []string{"http://y"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when both target and targets set")
+	}
+}
+
+func TestShouldRejectConfigGivenDuplicateNormalizedHostsWhenValidate(t *testing.T) {
+	_, err := Validate(&Root{
 		Proxy: Proxy{HTTP: ":80"},
 		Services: map[string]Service{
 			"foo":      {Target: "http://x"},
@@ -102,6 +122,38 @@ func TestValidateErrors(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for duplicate normalized hosts")
+	}
+}
+
+func TestShouldParseMultipleTargetsGivenYAMLWithTargetsListWhenLoadAndValidate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	content := `
+proxy:
+  http: ":0"
+
+services:
+  app.localhost:
+    targets:
+      - "http://127.0.0.1:1"
+      - "http://127.0.0.1:2"
+`
+	if err := writeFile(path, content); err != nil {
+		t.Fatal(err)
+	}
+	root, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	routes, err := Validate(root)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if len(routes) != 1 || len(routes[0].Targets) != 2 {
+		t.Fatalf("routes: %+v", routes)
+	}
+	if routes[0].Targets[0].String() != "http://127.0.0.1:1" || routes[0].Targets[1].String() != "http://127.0.0.1:2" {
+		t.Fatalf("targets: %+v", routes[0].Targets)
 	}
 }
 

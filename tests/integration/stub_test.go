@@ -4,7 +4,7 @@ package integration
 
 import "testing"
 
-func TestDockerStackNotSelected(t *testing.T) {
+func TestShouldSkipDockerBackedSuitesGivenDefaultBuildTagsWhenIntegrationTagMissing(t *testing.T) {
 	t.Skip(`docker-backed tests are disabled without -tags=integration.
 
 Bring up the stack from the repo root (nginx + buickd; see compose.yml):

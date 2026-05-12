@@ -102,32 +102,43 @@ func get(t *testing.T, client *http.Client, url, host string) (int, string) {
 	return res.StatusCode, string(body)
 }
 
-func TestBuickHTTPRoutesToEchoBackends(t *testing.T) {
+func TestShouldReturnService1EchoGivenService1HostWhenHTTPGetThroughBuick(t *testing.T) {
 	requireIntegration(t)
 	client := &http.Client{Timeout: 10 * time.Second}
-	base := httpAddr()
-
-	for _, tc := range []struct {
-		host string
-		want string
-	}{
-		{"service1.localhost", "service1"},
-		{"service2.localhost", "service2"},
-		{"service3.localhost", "service3"},
-	} {
-		t.Run(tc.host, func(t *testing.T) {
-			code, body := get(t, client, base+"/", tc.host)
-			if code != http.StatusOK {
-				t.Fatalf("status = %d, body = %q", code, body)
-			}
-			if !strings.Contains(body, tc.want) {
-				t.Fatalf("body %q does not contain %q", body, tc.want)
-			}
-		})
+	code, body := get(t, client, httpAddr()+"/", "service1.localhost")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", code, body)
+	}
+	if !strings.Contains(body, "service1") {
+		t.Fatalf("body %q does not contain service1", body)
 	}
 }
 
-func TestBuickHTTPUnknownHost502(t *testing.T) {
+func TestShouldReturnService2EchoGivenService2HostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	client := &http.Client{Timeout: 10 * time.Second}
+	code, body := get(t, client, httpAddr()+"/", "service2.localhost")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", code, body)
+	}
+	if !strings.Contains(body, "service2") {
+		t.Fatalf("body %q does not contain service2", body)
+	}
+}
+
+func TestShouldReturnService3EchoGivenService3HostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	client := &http.Client{Timeout: 10 * time.Second}
+	code, body := get(t, client, httpAddr()+"/", "service3.localhost")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", code, body)
+	}
+	if !strings.Contains(body, "service3") {
+		t.Fatalf("body %q does not contain service3", body)
+	}
+}
+
+func TestShouldReturn502GivenUnknownHostWhenHTTPGetThroughBuick(t *testing.T) {
 	requireIntegration(t)
 	client := &http.Client{Timeout: 10 * time.Second}
 	code, _ := get(t, client, httpAddr()+"/", "unknown.localhost")
@@ -136,7 +147,7 @@ func TestBuickHTTPUnknownHost502(t *testing.T) {
 	}
 }
 
-func TestBuickHTTPSRoutes(t *testing.T) {
+func TestShouldReturnService1EchoGivenService1HostWhenHTTPSGetThroughBuick(t *testing.T) {
 	requireIntegration(t)
 	client := &http.Client{
 		Timeout: 10 * time.Second,
