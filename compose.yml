@@ -29,11 +29,11 @@ services:
       context: .
       dockerfile: cmd/buickd/Dockerfile
     ports:
-      - "80:80"
-      - "443:443"
+      - "18080:8080"
+      - "18443:8443"
     volumes:
       - ./tests/integration/buick.yml:/etc/buick/buick.yml:ro
-      - buick_certs:/etc/buick/certs
+      - ./tests/integration/certs:/etc/buick/certs:ro
     networks: [buick]
     depends_on:
       - service1
@@ -43,6 +43,3 @@ services:
 networks:
   buick:
     name: buick-integration
-
-volumes:
-  buick_certs:

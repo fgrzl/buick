@@ -8,7 +8,7 @@ Buick reads one YAML file. The top level has **`proxy`** (listeners and TLS path
 |-------|---------|
 | **`http`** | HTTP listen address (e.g. **`:80`**). |
 | **`https`** | HTTPS listen address (e.g. **`:443`**). |
-| **`cert_file` / `key_file`** | Paths to the TLS leaf certificate and private key. If **both** exist they are reused; if **either** is missing, **`buickd`** can generate a dev self-signed pair (see [TLS and certificates](tls-and-certs.md)). |
+| **`cert_file` / `key_file`** | Paths to the TLS leaf certificate and private key. When **`https`** is set, **both** must exist as regular files before **`buickd`** starts (see [TLS and certificates](tls-and-certs.md)); **`buickd`** does not create them. |
 
 ### Listener defaults
 

@@ -13,10 +13,7 @@ The CA PEM is written next to the leaf certificate (same directory as **`cert_fi
 
 ## Behavior in `buickd` when HTTPS is enabled
 
-With **`proxy.https`** set (including after listener defaults are applied), **`buickd`** ensures PEMs exist at **`cert_file`** / **`key_file`**:
-
-- **Both** files present → used as-is (**`buick init`**, **mkcert**, etc.).
-- **Either** missing → **`buickd`** generates a self-signed RSA leaf (1 year) with SANs for `localhost`, `127.0.0.1`, `::1`, and every **`services`** hostname.
+With **`proxy.https`** set (including after listener defaults are applied), **`cert_file`** and **`key_file`** must each point to an **existing regular file**. **`buickd`** does not create or overwrite PEMs; use **`buick init`**, **mkcert**, or your own material.
 
 Without trusting the CA or leaf, browsers will warn until you import trust or swap PEMs.
 

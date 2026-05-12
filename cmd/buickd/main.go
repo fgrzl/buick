@@ -205,15 +205,11 @@ func ensureTLSMaterial(root *config.Root, log *slog.Logger, logExistingMaterial 
 	if strings.TrimSpace(root.Proxy.HTTPS) == "" {
 		return nil
 	}
-	names := config.HostnamesForCert(root)
-	gen, err := certs.EnsureDevPair(root.Proxy.CertFile, root.Proxy.KeyFile, names)
-	if err != nil {
+	if err := certs.CheckLeafMaterial(root.Proxy.CertFile, root.Proxy.KeyFile); err != nil {
 		return err
 	}
-	if gen {
-		log.Info("generated dev tls material", "cert", root.Proxy.CertFile, "key", root.Proxy.KeyFile)
-	} else if logExistingMaterial {
-		log.Info("using existing tls material", "cert", root.Proxy.CertFile, "key", root.Proxy.KeyFile)
+	if logExistingMaterial {
+		log.Info("using tls material", "cert", root.Proxy.CertFile, "key", root.Proxy.KeyFile)
 	}
 	return nil
 }

@@ -56,7 +56,7 @@ If **`buickd`** runs in the **same** Compose project as your APIs, attach both t
 | Build from this repo instead of pulling | `build: { context: ., dockerfile: cmd/buickd/Dockerfile }` and drop or override **`image`**. |
 | Linux Docker Engine, upstreams on the host via **`host.docker.internal`** | `extra_hosts: ["host.docker.internal:host-gateway"]` (Docker Desktop already defines **`host.docker.internal`**). |
 | Upstream URL uses **`something.localhost`** and must resolve to the **host** from inside the container | `extra_hosts: ["something.localhost:host-gateway"]` (one entry per hostname you dial that way). |
-| **`buickd` cannot write** TLS files into a bind-mounted cert dir (common on Linux with the **nonroot** image) | `user: "0:0"` for local dev only, or use a **named volume** for **`/etc/buick/certs`** instead of a host bind-mount. |
+| **`buickd` exits** with TLS path errors | Ensure **`cert_file`** and **`key_file`** exist **before** the container starts (run **`buick init`** on the host, use **mkcert**, or mount a directory that already contains the PEMs). **`buickd`** does not create PEMs. |
 
 Listening on **80** / **443** inside the container is fine; if the **host** cannot bind low ports, use **`:8080` / `:8443`** in the YAML and map **`8080:8080`** (or similar) in **`ports`**.
 
@@ -73,7 +73,7 @@ docker compose up -d
 
 From a directory that contains **`buick.yml`**, **`buick init`** alone uses that file.
 
-**Without `buick init`**, you can rely on **`buickd`**-generated self-signed material (trust the leaf or CA in the OS or Firefox) or use **mkcert** as described in [TLS and certificates](tls-and-certs.md).
+**Without `buick init`**, supply PEMs yourself (for example **mkcert** as in [TLS and certificates](tls-and-certs.md)). **`buickd`** never writes certificate files.
 
 ## Integration stack in this repo
 
