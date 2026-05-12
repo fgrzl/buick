@@ -1,143 +1,169 @@
 # buick
 
-Small HTTP/HTTPS reverse proxy for local development. It routes by `Host`, forwards with `httputil.ReverseProxy`, supports WebSocket upgrades, and reads a YAML service table.
+Small **HTTP/HTTPS reverse proxy** for **local development**: route by `Host`, forward with `httputil.ReverseProxy`, optional **WebSockets**, YAML service table, **TLS** helpers, and **loopback-only** management endpoints.
 
-Two binaries:
+| Binary | Role |
+|--------|------|
+| **`buickd`** | Runs the proxy until stopped (`--config` required). |
+| **`buick`** | Validate config, print routes, TLS/CA setup (`buick init`), `--version`. |
 
-- **`buickd`** — HTTP/HTTPS reverse proxy (runs until stopped).
-- **`buick`** — developer CLI: validate config, print routes, TLS/CA setup (`buick init`), and related helpers.
+---
 
 ## Install the `buick` CLI
 
-You need [Go](https://go.dev/dl/) **1.22 or newer** (matches this module’s `go` directive).
+Requires [Go](https://go.dev/dl/) **1.22+** (matches this module).
 
-**Install a released build from the module path** (binary name: `buick`):
+**From the module path** (binary name `buick`):
 
 ```bash
 go install github.com/fgrzl/buick/cmd/buick@latest
 ```
 
-Put Go’s install directory on your `PATH` if it is not already (commonly **`$HOME/go/bin`** on Linux and macOS, **`%USERPROFILE%\go\bin`** on Windows). Then confirm:
+Ensure Go’s install dir is on your **`PATH`** (often `$HOME/go/bin` on Linux/macOS, `%USERPROFILE%\go\bin` on Windows), then:
 
 ```bash
 buick --version
 ```
 
-**Install from a clone of this repository** (builds whatever revision you have checked out):
+**From a clone** (whatever revision you have checked out):
 
 ```bash
 go install ./cmd/buick
 ```
 
-**Build without installing** (writes `buick` in the current directory):
+**Build CLI only** (writes `buick` in the current directory):
 
 ```bash
 go build -o buick ./cmd/buick
 ```
 
-**Private forks or vanity imports:** If `go install` cannot fetch the module, configure [`GOPRIVATE`](https://go.dev/ref/mod#private-modules) and Git/SSH access for your host, or use `go install` from a local clone as above.
+**Private modules:** If `go install` cannot fetch the module, set [`GOPRIVATE`](https://go.dev/ref/mod#private-modules) and Git/SSH, or install from a local clone as above.
 
-## Usage
+---
 
-Build the daemon from a clone:
+## Quick start
 
-```bash
-go build -o buickd ./cmd/buickd
-```
+1. **Build the daemon** (from a clone):
 
-### Config files in this repo
+   ```bash
+   go build -o buickd ./cmd/buickd
+   ```
 
-| File | Role |
-|------|------|
-| **`compose.yml`** | Local integration stack: **nginx** backends `service1`–`service3`, **buickd** on network `buick-integration`, host ports **18080** (HTTP) / **18443** (HTTPS). |
-| **`compose.buick.yml`** | Config **inside** that stack: listens **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams **`http://service1:8080`** (Compose DNS names). |
-| **`buick.yml`** | Same upstream style as Compose (`http://serviceN:8080`) for **in-network** routing; **`./certs/`** paths suit bind-mounting or generating PEMs on the host. |
-| **`buick.host.example.yml`** | Example when **buickd runs on the host** and upstreams are on **`127.0.0.1`** ports. Copy or merge into your own file. |
+2. **Pick a config** — on the **host**, use something like **`buick.host.example.yml`** with `target: "http://127.0.0.1:…"`. The sample **`buick.yml`** expects Docker DNS names (`service1`, …); running **`buickd --config ./buick.yml`** on the laptop without that network will not reach those upstreams.
 
-### Run the sample stack (Docker)
+3. **Run:**
 
-From the repository root (builds **buickd** image, starts nginx + proxy):
+   ```bash
+   ./buickd --config ./buick.host.example.yml
+   ```
+
+4. **Optional TLS on the host:** `buick init --config …` (see [TLS for local HTTPS](#tls-for-local-https)). Use `buick init -h` for `--skip-trust`, `--uninstall`, etc.
+
+5. **Sanity check:**
+
+   ```bash
+   buick --check --config ./buick.host.example.yml
+   buick --print-routes --config ./compose.buick.yml
+   ```
+
+---
+
+## Repo config files
+
+| File | Purpose |
+|------|---------|
+| **`compose.yml`** | Integration stack: nginx backends `service1`–`service3`, **buickd** on `buick-integration`, host ports **18080** (HTTP) / **18443** (HTTPS). |
+| **`compose.buick.yml`** | Config **inside** that stack: listens **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams like **`http://service1:8080`**. |
+| **`buick.yml`** | Same upstream style as Compose; **`./certs/`** for bind-mounts or host-generated PEMs. |
+| **`buick.host.example.yml`** | **buickd on the host**, upstreams on **`127.0.0.1`**. Copy or merge into your own file. |
+
+### Sample stack (Docker)
+
+From the repo root:
 
 ```bash
 docker compose up -d --build
 ```
 
-Then open **http://127.0.0.1:18080/** with `Host: service1.localhost` (or add `127.0.0.1 service1.localhost` to your hosts file and use the hostname in the browser).
+Then use **http://127.0.0.1:18080/** with `Host: service1.localhost`, or add **`127.0.0.1 service1.localhost`** to your hosts file and open the hostname in the browser.
 
-### Run buickd on the host
-
-Use **`buick.host.example.yml`** (or equivalent `target: "http://127.0.0.1:…"`) so upstreams resolve. Running **`./buickd --config ./buick.yml`** on the laptop **without** Docker DNS for `service1` will not reach the sample upstreams.
-
-```bash
-./buickd --config ./buick.host.example.yml
-```
-
-Validate or print routes (point `--config` at the file you actually use):
-
-```bash
-buick --check --config ./buick.host.example.yml
-buick --print-routes --config ./compose.buick.yml
-```
-
-**Prepare TLS and trust on your machine** (paths and SANs follow the YAML you pass in):
-
-```bash
-buick init --config ./buick.host.example.yml
-```
-
-See `buick init -h` for flags such as `--skip-trust` (PEM files only) and `--uninstall`.
+---
 
 ## Configuration
 
-Top-level fields:
+### `proxy`
 
-- `proxy.http`: listen address for HTTP. Default in examples is **`:80`**. Omit to disable.
-- `proxy.https`: listen address for HTTPS. Default in examples is **`:443`**. Omit to disable.
-- `proxy.cert_file` / `proxy.key_file`: PEM paths used by the HTTPS listener. If **both** files exist they are reused; if **either** is missing, **buickd** generates a self-signed pair (see TLS below).
+| Field | Meaning |
+|-------|---------|
+| **`http`** | HTTP listen address. Examples often use **`:80`**. Omit to disable. |
+| **`https`** | HTTPS listen address. Examples often use **`:443`**. Omit to disable. |
+| **`cert_file` / `key_file`** | PEM paths for HTTPS. If **both** exist they are reused; if **either** is missing, **buickd** can generate a dev self-signed pair (see [TLS](#tls-for-local-https)). |
 
-Each `services` entry maps a hostname to an upstream:
+### `services` (per hostname)
 
-- `target`: absolute `http://` or `https://` URL for the upstream. The hostname in the URL is whatever **buickd** must dial: use **Compose service names** (for example **`http://api:8080`**) when **buickd** shares a user-defined network with the backend; use **`http://host.docker.internal:PORT`** when the backend listens on the **host** and **buickd** runs in a container; use **`http://127.0.0.1:PORT`** when **buickd** runs on the **same machine** as the backend.
-- `targets`: optional list of absolute upstream URLs for the same hostname. When set (non-empty), **buickd** round-robins across them; do not set `target` in the same entry. There is **no** health checking: every peer is chosen in rotation regardless of availability (use an external load balancer or orchestrator health if you need that).
-- `websocket`: when true, disables response buffering (`FlushInterval`) suitable for upgrades.
-- `read_timeout` / `write_timeout`: optional `time.ParseDuration` strings. Defaults are 60s for normal HTTP and 168h for websocket services unless overridden.
+| Field | Meaning |
+|-------|---------|
+| **`target`** | Single absolute `http://` or `https://` URL **buickd** dials. Use **Compose service names** (e.g. `http://api:8080`) when **buickd** shares a network with the backend; **`http://host.docker.internal:PORT`** when the app is on the **host** and **buickd** is in a container; **`http://127.0.0.1:PORT`** when **buickd** runs on the **same machine** as the backend. |
+| **`targets`** | List of upstream URLs for **round-robin** on the same hostname. Do **not** set **`target`** in the same entry. **No health checks** — peers rotate regardless of availability. |
+| **`websocket`** | If true, suitable `FlushInterval` for WebSocket upgrades. |
+| **`read_timeout` / `write_timeout`** | Optional `time.ParseDuration`. Defaults: **60s** HTTP, **168h** when `websocket: true`. |
 
-Incoming requests are matched using `NormalizeHost(r.Host)` so `service1.localhost:80` matches `service1.localhost`. Unknown hosts receive `502 Bad Gateway`.
+**Matching:** Incoming `Host` is normalized (`service1.localhost:80` matches `service1.localhost`). Unknown hosts → **502 Bad Gateway**.
 
-Forwarded headers set on the upstream request:
+**Forwarded headers** on the upstream request: `X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Forwarded-For` (client IP appended). The client **`Host`** header is **not** rewritten to the upstream hostname.
 
-- `X-Forwarded-Host` (client `Host`, including port if present)
-- `X-Forwarded-Proto` (`http` or `https`)
-- `X-Forwarded-For` (appended client IP)
-
-The original client `Host` header is preserved on the proxied request (not rewritten to the upstream hostname).
+---
 
 ## Operations
 
-**Management and metrics (loopback only):** On HTTP and HTTPS listeners, **`GET /_buick/health`**, **`GET /_buick/routes`**, and **`GET /_buick/metrics`** are answered only when the **TCP client address is loopback** (`127.0.0.1`, `::1`, etc.), based on `RemoteAddr`. They are intended for local checks and debugging. If **buickd** sits behind another reverse proxy, those paths usually **will not** trigger unless the proxy forwards from loopback or you query **buickd** directly on loopback. **`/_buick/routes`** returns routes **sorted by hostname** so output is stable for scripts and diffs. Unknown paths under **`/_buick/`** (for example a typo) return **404** on loopback.
+### Management (`/_buick/*`, loopback only)
 
-**Reload:** Send **`SIGHUP`** to reload the route table from the same **`--config`** file (Unix convention; may not apply on all Windows setups). If load or validation fails, the previous routes stay in place. **Listener addresses** and the **HTTP server read/write timeouts** are **not** changed until you restart the process; TLS leaf material may be refreshed via the same dev-cert logic as startup when HTTPS is enabled.
+On **both** HTTP and HTTPS listeners, these **GET** endpoints work only when the **TCP client is loopback** (`127.0.0.1`, `::1`, …) — judged from **`RemoteAddr`**:
+
+| Path | Response |
+|------|----------|
+| **`/_buick/health`** | JSON: status, version, uptime, route **count** (no full route table). |
+| **`/_buick/routes`** | JSON array of routes, **sorted by hostname** (stable for scripts and diffs). |
+| **`/_buick/metrics`** | Prometheus-style text (404 if metrics disabled). |
+
+Unknown paths under **`/_buick/...`** → **404** on loopback (e.g. typos).
+
+If **buickd** sits **behind another reverse proxy**, these URLs usually **do not** hit the mgmt handlers unless you talk to **buickd** directly on loopback or the proxy preserves loopback source addresses.
+
+### Reload (`SIGHUP`)
+
+Send **`SIGHUP`** to reload the route table from the same **`--config`** file (common on Unix; on Windows this may not be available). If load or validation fails, **old routes stay active**.
+
+**Not** reloaded until process restart: **listener addresses** and **server read/write timeouts**. TLS leaf files may still be refreshed when HTTPS is enabled (same dev-cert behavior as startup). Successful reload does not spam “using existing TLS material” logs when certs are unchanged.
+
+### Shutdown
+
+**SIGINT** / **SIGTERM** → graceful shutdown (**30s** deadline per server).
+
+---
 
 ## TLS for local HTTPS
 
-**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf certificate for the hostnames in your YAML, writes `proxy.cert_file` / `proxy.key_file`, and installs the CA using **OS tools** (no extra Go modules): **Windows** (`certutil` current-user root store), **macOS** (`security` + login keychain), **Debian-like Linux** (`sudo cp` into `/usr/local/share/ca-certificates` and `update-ca-certificates`). Other platforms, or when install fails, use **`--skip-trust`** and import the generated **`buick-root-ca.pem`** manually. **Firefox NSS** is not modified; Chromium-based browsers on Windows/macOS typically use the OS store.
+**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf for hostnames in your YAML, writes `cert_file` / `key_file`, and installs the CA via **OS tools** (Windows `certutil`, macOS `security` + keychain, Debian-like `update-ca-certificates`). Use **`--skip-trust`** and import **`buick-root-ca.pem`** manually if install fails. **Firefox NSS** is not modified; Chromium on Windows/macOS usually uses the OS store.
 
-When `proxy.https` is set, **buickd** still ensures PEM material exists at `cert_file` and `key_file`:
+With **`proxy.https`** set, **buickd** ensures PEMs exist at **`cert_file`** / **`key_file`**:
 
-- If **both** files already exist, they are used as-is (including files produced by **`buick init`** or **mkcert**).
-- If **either** file is missing, **buickd** generates a **self-signed** RSA certificate valid one year, with SANs for `localhost`, `127.0.0.1`, `::1`, and every hostname key under `services`.
+- **Both** files present → used as-is (**`buick init`**, **mkcert**, etc.).
+- **Either** missing → **buickd** generates a self-signed RSA leaf (1 year), SANs for `localhost`, `127.0.0.1`, `::1`, and every **`services`** hostname.
 
-If you skip **`buick init`**, the OS or browser will warn until you trust that certificate (manual import) or replace the PEMs (for example with **mkcert** as below).
+Without trusting the CA or leaf, browsers will warn until you import trust or swap PEMs (e.g. **mkcert** below).
+
+---
 
 ## Docker Compose recipe
 
-This repository **does** ship **`compose.yml`** + **`compose.buick.yml`** for the integration stack (see [Integration tests](#integration-tests-docker)). For **your** application, copy or adapt the patterns below into your own Compose file.
+This repo ships **`compose.yml`** + **`compose.buick.yml`** for the [integration stack](#integration-tests-docker). For your app, copy the patterns into your own Compose file.
 
-### 1. Example `docker-compose.yml` (buickd + persisted certs)
+### Example `docker-compose.yml` (buickd + persisted certs)
 
-Build context should be the directory that contains this repo (or your own image name). Bind-mount **`./certs`** so TLS files stay on the host across container recreations. Use **`host-gateway`** so `host.docker.internal` and `*.localhost` resolve to the machine running your upstream processes.
+Build context = directory containing this repo (or your image). Bind-mount **`./certs`** so TLS survives container recreation. **`extra_hosts`** with **`host-gateway`** helps **`host.docker.internal`** and **`*.localhost`** reach processes on the host.
 
-The image listens on **80** and **443** by default in the example config. Ports below 1024 often need extra privileges in containers (for example `user: "0:0"` for local dev, or `cap_add: [NET_BIND_SERVICE]` where your runtime supports it). Otherwise, point `proxy.http` / `proxy.https` at high ports (for example `:8080` / `:8443`) and map those in `ports:` instead.
+Default examples may listen on **80** / **443**; binding ports below 1024 in containers may need elevated user or capabilities for local dev, or use high ports in YAML (`:8080` / `:8443`) and map them in `ports:`.
 
 ```yaml
 services:
@@ -157,14 +183,14 @@ services:
       - "host.docker.internal:host-gateway"
       - "service1.localhost:host-gateway"
       - "service2.localhost:host-gateway"
-      # add one extra_hosts line per hostname you route in buick.yml
-    # If buickd cannot write TLS files into ./certs (Linux bind-mount ownership), use:
+      # add one line per hostname you route in buick.yml
+    # If buickd cannot write TLS files into ./certs (Linux bind-mount ownership):
     # user: "0:0"
 ```
 
-### 2. Example `buick.docker.yml` (paths and upstreams inside Docker)
+### Example `buick.docker.yml` (paths and upstreams inside Docker)
 
-Use **absolute paths** under the cert volume and **`http://host.docker.internal:PORT`** for APIs listening on the host (`127.0.0.1` inside the container is not your laptop).
+Use **paths under the cert volume** and **`http://host.docker.internal:PORT`** for apps on the host (`127.0.0.1` inside the container is not your laptop).
 
 ```yaml
 proxy:
@@ -180,41 +206,41 @@ services:
     target: "http://host.docker.internal:8081"
 ```
 
-Upstream ports here are **8080**, **8081**, and so on for each app on the host. **buickd** listens on **80** / **443** in this example, so there is no port clash with those upstreams on the same host.
+**buickd** here listens on **80** / **443**; upstreams use **8080**, **8081**, etc. on the host to avoid clashes.
 
-If **buickd** runs in the **same** Compose project as your APIs, put every service on one user-defined network and use **`http://service1:8080`** style targets instead of `host.docker.internal` (same pattern as **`buick.yml`** / **`compose.buick.yml`** in this repo).
+If **buickd** runs in the **same** Compose project as your APIs, use one user-defined network and **`http://service1:8080`**-style targets (see **`buick.yml`** / **`compose.buick.yml`**).
 
-### 3. First run and trust (low friction)
+### First run and trust
 
 ```bash
 mkdir -p certs
 ```
 
-On the **host** (with the **`buick`** CLI [installed](#install-the-buick-cli)), point at the same config paths your Compose volume will use, then bring the stack up:
+On the **host**, with **`buick`** [installed](#install-the-buick-cli), align paths with your Compose volume, then:
 
 ```bash
 buick init --config ./buick.docker.yml
 docker compose up -d --build
 ```
 
-If you prefer not to use **`buick init`**, use one of the following.
+**Without `buick init`**, pick one:
 
-**Trust once (pick one):**
+1. **buickd-generated self-signed** — After first start, trust **`./certs/localhost.pem`** (or your configured filenames) in the OS or Firefox. Existing PEMs are reused until deleted.
 
-1. **buickd-generated self-signed** — After the first successful start, import **`./certs/localhost.pem`** into your OS trust store (or Firefox’s Authorities). **buickd** reuses both PEMs when they already exist, so you do not repeat this unless you delete `./certs`.
+2. **mkcert** — `mkcert -install` once, then write leaf files matching `cert_file` / `key_file`:
 
-2. **mkcert (fewest browser warnings)** — On the host: `mkcert -install` once, then create leaf files in `./certs` with the same names as `cert_file` / `key_file` in your buick config, for example:
+   ```bash
+   mkcert -cert-file ./certs/localhost.pem -key-file ./certs/localhost-key.pem \
+     localhost 127.0.0.1 ::1 service1.localhost service2.localhost service3.localhost
+   ```
 
-```bash
-mkcert -cert-file ./certs/localhost.pem -key-file ./certs/localhost-key.pem \
-  localhost 127.0.0.1 ::1 service1.localhost service2.localhost service3.localhost
-```
+   Then start Compose. **buickd** does not overwrite existing PEMs.
 
-Then start Compose. **buickd** will **not** overwrite existing PEMs; trust comes from mkcert’s local CA.
+---
 
 ## Integration tests (Docker)
 
-The repo includes **`compose.yml`** with three sample **nginx** backends (`service1`–`service3`, configs under **`tests/integration/nginx/`**) and a **buickd** service built from **`cmd/buickd/Dockerfile`**. **buickd** reads **`compose.buick.yml`** (HTTP **8080**, HTTPS **8443** inside the stack; published as **18080** / **18443** on the host). **buickd** runs as **`user: "0:0"`** in that file so it can write generated TLS material into the named **`buick_certs`** volume (distroless’s default nonroot user cannot create files there on a fresh volume).
+**`compose.yml`** runs three **nginx** backends (`service1`–`service3`; configs under **`tests/integration/nginx/`**) and **buickd** from **`cmd/buickd/Dockerfile`**. **buickd** uses **`compose.buick.yml`** (internal **8080** / **8443**; published **18080** / **18443**). **buickd** runs as **`user: "0:0"`** there so it can write TLS into the **`buick_certs`** volume on first boot.
 
 ```bash
 docker compose up -d --build
@@ -222,10 +248,4 @@ BUICK_INTEGRATION=1 go test -tags=integration ./tests/integration/...
 docker compose down
 ```
 
-With **`BUICK_INTEGRATION=1`**, tests wait (up to **90s**) for **http://127.0.0.1:18080** to serve the stack so CI is not flaky right after `docker compose up`.
-
-Override the default probe URLs if needed: **`BUICK_HTTP_ADDR`**, **`BUICK_HTTPS_ADDR`**.
-
-## Graceful shutdown
-
-SIGINT and SIGTERM trigger a graceful shutdown with a 30 second deadline on **buickd**.
+With **`BUICK_INTEGRATION=1`**, tests wait up to **90s** for **http://127.0.0.1:18080**. Override probes with **`BUICK_HTTP_ADDR`** and **`BUICK_HTTPS_ADDR`** if needed.
