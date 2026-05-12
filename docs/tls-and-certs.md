@@ -4,7 +4,7 @@
 
 Run **`buick init`** once to create a small local CA, issue a leaf for hostnames derived from your config, write PEMs to **`proxy.cert_file`** and **`proxy.key_file`**, and install the CA into the OS trust store where supported (Windows `certutil`, macOS `security` + login keychain, Debian-like `update-ca-certificates`). Parent directories for those PEM paths are created automatically if they do not exist.
 
-- Pass **`--config /path/to/buick.yml`**, or run from a directory that contains **`buick.yml`** (default config file for `init` only).
+- Pass **`--config /path/to/buick.yml`**, or run from a directory that contains **`buick.yml`** (default for **`buick init`** only).
 - **`buick init -h`** documents **`--skip-trust`** (write PEMs only), **`--uninstall`**, and related flags.
 - Use **`--skip-trust`** and import **`buick-root-ca.pem`** manually if trust installation fails.
 - **Firefox NSS** is not modified; Chromium on Windows/macOS typically uses the OS store.

@@ -27,8 +27,11 @@ Each key is a hostname (or hostname with port; see matching below). The value de
 |-------|---------|
 | **`target`** | Single absolute `http://` or `https://` URL **`buickd`** dials. Use **Compose service names** (e.g. `http://api:8080`) when **`buickd`** shares a Docker network with the backend; **`http://host.docker.internal:PORT`** when the app runs on the **host** and **`buickd`** is in a container; **`http://127.0.0.1:PORT`** when **`buickd`** runs on the **same machine** as the backend. |
 | **`targets`** | List of upstream URLs for **round-robin** on the same hostname. Do **not** set **`target`** in the same entry. **No health checks** — peers rotate regardless of availability. |
-| **`websocket`** | If true, suitable `FlushInterval` for WebSocket upgrades. |
-| **`read_timeout` / `write_timeout`** | Optional `time.ParseDuration`. Defaults: **60s** HTTP, **168h** when `websocket: true`. |
+| **`read_timeout` / `write_timeout`** | Optional `time.ParseDuration`. When omitted, per-route defaults are **60s** (shown in **`/_buick/routes`**). The **HTTP server** read/write deadlines are the maximum across routes, with a **168h** minimum so WebSocket upgrades and long-lived streams work without extra YAML. |
+
+### WebSockets
+
+**`Upgrade: websocket`** requests are forwarded automatically; no `websocket` field in YAML. Tune **`read_timeout`** / **`write_timeout`** only when you need non-default per-route values for metrics and documentation; the **168h** server floor still applies.
 
 ### Matching
 

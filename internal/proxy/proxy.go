@@ -138,7 +138,7 @@ func (rt *Router) poolFor(r config.Resolved) *upstreamPool {
 func newUpstreamPool(r config.Resolved, log *slog.Logger) *upstreamPool {
 	proxies := make([]*httputil.ReverseProxy, len(r.Targets))
 	for i := range r.Targets {
-		proxies[i] = newReverseProxy(r.Targets[i], r.WebSocket, log)
+		proxies[i] = newReverseProxy(r.Targets[i], log)
 	}
 	return &upstreamPool{proxies: proxies, targets: append([]*url.URL(nil), r.Targets...)}
 }
@@ -152,7 +152,7 @@ func (p *upstreamPool) pick() int {
 	return int((i - 1) % n)
 }
 
-func newReverseProxy(target *url.URL, websocket bool, log *slog.Logger) *httputil.ReverseProxy {
+func newReverseProxy(target *url.URL, log *slog.Logger) *httputil.ReverseProxy {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     false,
@@ -170,9 +170,8 @@ func newReverseProxy(target *url.URL, websocket bool, log *slog.Logger) *httputi
 
 	rp := httputil.NewSingleHostReverseProxy(target)
 	rp.Transport = transport
-	if websocket {
-		rp.FlushInterval = -1
-	}
+	// FlushInterval -1 is required for WebSocket/SSE-style hijacked responses.
+	rp.FlushInterval = -1
 
 	director := rp.Director
 	rp.Director = func(req *http.Request) {

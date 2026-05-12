@@ -19,10 +19,10 @@ Put Go’s **`bin`** on your **`PATH`** (for example `$HOME/go/bin` on Linux/mac
 Add a Buick YAML with **`proxy.cert_file`** and **`proxy.key_file`** (see [Configuration](docs/config-reference.md)). **`buick init`** creates missing parent directories for those paths, writes the leaf and local CA, and installs trust where the OS supports it.
 
 ```bash
-buick init --config ./dev/buick.yml
+buick init
 ```
 
-If **`buick.yml`** sits in the current directory, **`buick init`** alone picks it up. Use **`buick init -h`** for **`--skip-trust`**, **`--uninstall`**, and other flags.
+If **`buick.yml`** is in the current directory, **`buick init`** alone uses it; otherwise use **`buick init --config ./path/to/buick.yml`**. Use **`buick init -h`** for **`--skip-trust`**, **`--uninstall`**, and other flags.
 
 ## Docker Compose
 

@@ -49,7 +49,6 @@ func Wrap(inner http.Handler, routes RouteReader, start time.Time, version, http
 				row := map[string]any{
 					"host":             x.Host,
 					"targets":          tgts,
-					"websocket":        x.WebSocket,
 					"read_timeout_ms":  x.ReadTimeout.Milliseconds(),
 					"write_timeout_ms": x.WriteTimeout.Milliseconds(),
 				}

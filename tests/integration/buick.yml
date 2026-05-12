@@ -15,6 +15,3 @@ services:
 
   service3.localhost:
     target: "http://service3:8080"
-    websocket: true
-    read_timeout: "168h"
-    write_timeout: "168h"

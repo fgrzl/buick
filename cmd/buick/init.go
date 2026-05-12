@@ -13,7 +13,8 @@ import (
 
 const defaultInitConfigName = "buick.yml"
 
-func defaultInitConfigPath(wd string) (abs string, ok bool) {
+// findInitConfigFile returns ./buick.yml under wd when it exists as a regular file.
+func findInitConfigFile(wd string) (abs string, ok bool) {
 	p := filepath.Join(wd, defaultInitConfigName)
 	st, err := os.Stat(p)
 	if err == nil && !st.IsDir() {
@@ -34,7 +35,7 @@ func runInit(args []string) int {
 		fs.PrintDefaults()
 	}
 
-	configPath := fs.String("config", "", "path to buick YAML (if omitted: buick.yml in the current directory)")
+	configPath := fs.String("config", "", "path to buick YAML (if omitted: ./"+defaultInitConfigName+")")
 	uninstall := fs.Bool("uninstall", false, "remove the Buick CA from trust stores (uses buick-root-ca.pem next to the leaf cert)")
 	skipTrust := fs.Bool("skip-trust", false, "write PEM files only; do not install the CA")
 	noFirefox := fs.Bool("no-firefox", false, "no-op (reserved); Firefox NSS is never modified by buick init")
@@ -50,9 +51,9 @@ func runInit(args []string) int {
 			return 2
 		}
 		var ok bool
-		chosen, ok = defaultInitConfigPath(wd)
+		chosen, ok = findInitConfigFile(wd)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "buick init: specify --config, or create %s in the current directory\n", defaultInitConfigName)
+			fmt.Fprintf(os.Stderr, "buick init: no %s in current directory; use --config\n", defaultInitConfigName)
 			fs.Usage()
 			return 2
 		}

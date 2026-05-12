@@ -13,7 +13,7 @@ There are no other flags today.
 
 | Flag / subcommand | Meaning |
 |--------------------|---------|
-| **`--config PATH`** | Required for **`--check`** and **`--print-routes`** (not for **`buick init`**, which can default to **`buick.yml`** in the current directory). |
+| **`--config PATH`** | Required for **`--check`** and **`--print-routes`** (not for **`buick init`**, which defaults to **`./buick.yml`** in the current directory when **`--config`** is omitted). |
 | **`--check`** | Load and validate the config; print **`config OK`** on success. |
 | **`--print-routes`** | Print resolved host → upstream lines and exit. |
 | **`--version`** | Print version information. |

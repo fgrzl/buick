@@ -33,7 +33,6 @@ type Proxy struct {
 type Service struct {
 	Target       string   `yaml:"target"`
 	Targets      []string `yaml:"targets"`
-	WebSocket    bool     `yaml:"websocket"`
 	ReadTimeout  string   `yaml:"read_timeout"`
 	WriteTimeout string   `yaml:"write_timeout"`
 }
@@ -42,7 +41,6 @@ type Service struct {
 type Resolved struct {
 	Host         string
 	Targets      []*url.URL // non-empty; round-robin when len > 1
-	WebSocket    bool
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -174,7 +172,6 @@ func Validate(root *Root) ([]Resolved, error) {
 		resolved = append(resolved, Resolved{
 			Host:         nh,
 			Targets:      urls,
-			WebSocket:    svc.WebSocket,
 			ReadTimeout:  rt,
 			WriteTimeout: wt,
 		})
@@ -201,9 +198,6 @@ func parseServiceTargetURL(serviceHost, t string) (*url.URL, error) {
 
 func parseTimeouts(s Service) (read, write time.Duration, err error) {
 	defaultRead, defaultWrite := defaultHTTPReadTimeout, defaultHTTPWriteTimeout
-	if s.WebSocket {
-		defaultRead, defaultWrite = defaultWSReadTimeout, defaultWSWriteTimeout
-	}
 
 	read = defaultRead
 	write = defaultWrite
@@ -260,6 +254,8 @@ func HostsFromResolved(routes []Resolved) []string {
 }
 
 // MaxEffectiveTimeouts returns server-wide read/write caps from resolved routes.
+// A floor of defaultWSReadTimeout / defaultWSWriteTimeout is applied so WebSocket
+// and other long-lived upgrades are not cut off by HTTP-only per-route defaults.
 func MaxEffectiveTimeouts(routes []Resolved) (read, write time.Duration) {
 	read, write = defaultHTTPReadTimeout, defaultHTTPWriteTimeout
 	for _, r := range routes {
@@ -269,6 +265,12 @@ func MaxEffectiveTimeouts(routes []Resolved) (read, write time.Duration) {
 		if r.WriteTimeout > write {
 			write = r.WriteTimeout
 		}
+	}
+	if read < defaultWSReadTimeout {
+		read = defaultWSReadTimeout
+	}
+	if write < defaultWSWriteTimeout {
+		write = defaultWSWriteTimeout
 	}
 	return read, write
 }

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestShouldNormalizeHostForRoutingGivenRepresentativeHostStringsWhenNormalizeHostCalled(t *testing.T) {
@@ -195,6 +196,30 @@ services:
 	}
 	if routes[0].Targets[0].String() != "http://127.0.0.1:1" || routes[0].Targets[1].String() != "http://127.0.0.1:2" {
 		t.Fatalf("targets: %+v", routes[0].Targets)
+	}
+}
+
+func TestShouldApplyLongLivedFloorGivenHTTPDefaultTimeoutsWhenMaxEffectiveTimeoutsCalled(t *testing.T) {
+	u := mustParseURL(t, "http://127.0.0.1:1")
+	routes := []Resolved{
+		{Host: "a", Targets: []*url.URL{u}, ReadTimeout: defaultHTTPReadTimeout, WriteTimeout: defaultHTTPWriteTimeout},
+	}
+	read, write := MaxEffectiveTimeouts(routes)
+	if read != defaultWSReadTimeout || write != defaultWSWriteTimeout {
+		t.Fatalf("read=%v write=%v", read, write)
+	}
+}
+
+func TestShouldHonorExplicitReadAboveWebSocketDefaultWhenMaxEffectiveTimeoutsCalled(t *testing.T) {
+	u := mustParseURL(t, "http://127.0.0.1:1")
+	r200h := 200 * time.Hour
+	routes := []Resolved{{Host: "a", Targets: []*url.URL{u}, ReadTimeout: r200h, WriteTimeout: defaultHTTPWriteTimeout}}
+	read, write := MaxEffectiveTimeouts(routes)
+	if read != r200h {
+		t.Fatalf("read=%v want %v", read, r200h)
+	}
+	if write != defaultWSWriteTimeout {
+		t.Fatalf("write=%v", write)
 	}
 }
 

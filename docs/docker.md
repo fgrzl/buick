@@ -71,7 +71,7 @@ docker compose up -d
 
 **`buick init`** creates any missing parent directories for **`cert_file`** and **`key_file`** before writing PEMs.
 
-From a directory that contains **`buick.yml`**, **`buick init`** alone uses that file.
+From a directory that contains **`buick.yml`**, **`buick init`** alone uses that file; otherwise pass **`--config`**.
 
 **Without `buick init`**, supply PEMs yourself (for example **mkcert** as in [TLS and certificates](tls-and-certs.md)). **`buickd`** never writes certificate files.
 

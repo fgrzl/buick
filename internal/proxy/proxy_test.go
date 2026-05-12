@@ -175,7 +175,7 @@ func getThroughRouter(t *testing.T, rt *Router, host, urlPath, remoteAddr string
 func routerToTestUpstream(t *testing.T, u *url.URL) *Router {
 	t.Helper()
 	return NewRouter([]config.Resolved{
-		{Host: "app.test", Targets: []*url.URL{u}, WebSocket: false, ReadTimeout: time.Second, WriteTimeout: time.Second},
+		{Host: "app.test", Targets: []*url.URL{u}, ReadTimeout: time.Second, WriteTimeout: time.Second},
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 

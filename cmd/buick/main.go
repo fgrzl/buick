@@ -65,15 +65,11 @@ func run() int {
 func printRouteTable(routes []config.Resolved) {
 	sort.Slice(routes, func(i, j int) bool { return routes[i].Host < routes[j].Host })
 	for _, r := range routes {
-		flags := ""
-		if r.WebSocket {
-			flags = " websocket=true"
-		}
 		tgts := make([]string, len(r.Targets))
 		for i, u := range r.Targets {
 			tgts[i] = u.String()
 		}
-		fmt.Printf("%s -> %s%s\n", r.Host, strings.Join(tgts, ", "), flags)
+		fmt.Printf("%s -> %s\n", r.Host, strings.Join(tgts, ", "))
 	}
 }
 
