@@ -1,6 +1,7 @@
 package mgmt
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,12 +25,15 @@ func (s stubRoutes) Routes() []config.Resolved {
 func (s stubRoutes) RouteCount() int { return s.n }
 
 func TestWrapShouldServeHealthOnLoopbackGivenGETWhenPathIsBuickHealth(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		t.Fatalf("inner should not run for mgmt path, got %s", r.URL.Path)
 	})
 	h := Wrap(inner, stubRoutes{n: 2}, time.Now(), "0.0.1", ":8080", "", nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/_buick/health", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/_buick/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -43,13 +47,16 @@ func TestWrapShouldServeHealthOnLoopbackGivenGETWhenPathIsBuickHealth(t *testing
 
 func TestWrapShouldDelegateToInnerGivenNonLoopbackWhenPathIsBuickHealth(t *testing.T) {
 	var innerHit bool
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		innerHit = true
 		w.WriteHeader(http.StatusTeapot)
 	})
 	h := Wrap(inner, stubRoutes{}, time.Now(), "0.0.1", ":8080", "", nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/_buick/health", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/_buick/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.RemoteAddr = "192.0.2.1:12345"
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -62,12 +69,15 @@ func TestWrapShouldDelegateToInnerGivenNonLoopbackWhenPathIsBuickHealth(t *testi
 }
 
 func TestWrapShouldReturn404GivenUnknownBuickPathWhenLoopbackGET(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		t.Fatalf("inner should not run, path %s", r.URL.Path)
 	})
 	h := Wrap(inner, stubRoutes{}, time.Now(), "0.0.1", ":8080", "", nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/_buick/nope", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/_buick/nope", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

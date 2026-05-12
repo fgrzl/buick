@@ -34,7 +34,7 @@ func TestShouldReturn502GivenUnmatchedHostWhenServingRequest(t *testing.T) {
 }
 
 func TestShouldPropagateUpstreamStatusGivenMatchedHostWhenUpstreamResponds(t *testing.T) {
-	u := echoUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+	u := echoUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	rt := routerToTestUpstream(t, u)
@@ -93,11 +93,11 @@ func TestShouldSetXForwardedForGivenMatchedRouteWhenProxying(t *testing.T) {
 }
 
 func TestShouldRoundRobinPeersGivenMultipleTargetsWhenSequentialRequests(t *testing.T) {
-	u0 := echoUpstream(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "A")
+	u0 := echoUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, "A")
 	})
-	u1 := echoUpstream(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "B")
+	u1 := echoUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, "B")
 	})
 
 	rt := NewRouter([]config.Resolved{
