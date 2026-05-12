@@ -18,6 +18,22 @@ Put Go’s **`bin`** on your **`PATH`** (for example `$HOME/go/bin` on Linux/mac
 
 Add a Buick YAML with **`certs.path`** (where **`buick init`** writes) and **`proxy.certs_path`** (where **`buickd`** reads); both use fixed **`localhost.pem`** / **`localhost-key.pem`** names (see [Configuration](docs/config-reference.md)). **`buick init`** creates missing parent directories, writes the leaf and local CA, and installs trust where the OS supports it.
 
+Example **`buick.yml`**:
+
+```yaml
+certs:
+  path: "./dev/buick/certs"
+
+proxy:
+  certs_path: "./dev/buick/certs"
+
+services:
+  api.localhost:
+    target: "http://127.0.0.1:8080"
+  app.localhost:
+    target: "http://127.0.0.1:8081"
+```
+
 ```bash
 buick init
 ```
