@@ -25,27 +25,14 @@ func TestShouldNormalizeHostForRoutingGivenRepresentativeHostStringsWhenNormaliz
 }
 
 func TestShouldResolveSingleTargetGivenYAMLWithTargetWhenLoadAndValidate(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "buick.yml")
-	content := `
+	routes := mustLoadValidateYAML(t, `
 proxy:
   http: ":0"
 
 services:
   app.localhost:
     target: "http://127.0.0.1:9"
-`
-	if err := writeFile(path, content); err != nil {
-		t.Fatal(err)
-	}
-	root, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	routes, err := Validate(root)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+`)
 	if len(routes) != 1 {
 		t.Fatalf("routes: got %d want 1", len(routes))
 	}
@@ -126,9 +113,7 @@ func TestShouldRejectConfigGivenDuplicateNormalizedHostsWhenValidate(t *testing.
 }
 
 func TestShouldParseMultipleTargetsGivenYAMLWithTargetsListWhenLoadAndValidate(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "buick.yml")
-	content := `
+	routes := mustLoadValidateYAML(t, `
 proxy:
   http: ":0"
 
@@ -137,8 +122,20 @@ services:
     targets:
       - "http://127.0.0.1:1"
       - "http://127.0.0.1:2"
-`
-	if err := writeFile(path, content); err != nil {
+`)
+	if len(routes) != 1 || len(routes[0].Targets) != 2 {
+		t.Fatalf("routes: %+v", routes)
+	}
+	if routes[0].Targets[0].String() != "http://127.0.0.1:1" || routes[0].Targets[1].String() != "http://127.0.0.1:2" {
+		t.Fatalf("targets: %+v", routes[0].Targets)
+	}
+}
+
+func mustLoadValidateYAML(t *testing.T, raw string) []Resolved {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	if err := writeFile(path, raw); err != nil {
 		t.Fatal(err)
 	}
 	root, err := Load(path)
@@ -149,12 +146,7 @@ services:
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if len(routes) != 1 || len(routes[0].Targets) != 2 {
-		t.Fatalf("routes: %+v", routes)
-	}
-	if routes[0].Targets[0].String() != "http://127.0.0.1:1" || routes[0].Targets[1].String() != "http://127.0.0.1:2" {
-		t.Fatalf("targets: %+v", routes[0].Targets)
-	}
+	return routes
 }
 
 func writeFile(path, body string) error {

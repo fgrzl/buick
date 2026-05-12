@@ -102,64 +102,55 @@ func get(t *testing.T, client *http.Client, url, host string) (int, string) {
 	return res.StatusCode, string(body)
 }
 
-func TestShouldReturnService1EchoGivenService1HostWhenHTTPGetThroughBuick(t *testing.T) {
-	requireIntegration(t)
-	client := &http.Client{Timeout: 10 * time.Second}
-	code, body := get(t, client, httpAddr()+"/", "service1.localhost")
-	if code != http.StatusOK {
-		t.Fatalf("status = %d, body = %q", code, body)
-	}
-	if !strings.Contains(body, "service1") {
-		t.Fatalf("body %q does not contain service1", body)
-	}
+func httpTestClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Second}
 }
 
-func TestShouldReturnService2EchoGivenService2HostWhenHTTPGetThroughBuick(t *testing.T) {
-	requireIntegration(t)
-	client := &http.Client{Timeout: 10 * time.Second}
-	code, body := get(t, client, httpAddr()+"/", "service2.localhost")
-	if code != http.StatusOK {
-		t.Fatalf("status = %d, body = %q", code, body)
-	}
-	if !strings.Contains(body, "service2") {
-		t.Fatalf("body %q does not contain service2", body)
-	}
-}
-
-func TestShouldReturnService3EchoGivenService3HostWhenHTTPGetThroughBuick(t *testing.T) {
-	requireIntegration(t)
-	client := &http.Client{Timeout: 10 * time.Second}
-	code, body := get(t, client, httpAddr()+"/", "service3.localhost")
-	if code != http.StatusOK {
-		t.Fatalf("status = %d, body = %q", code, body)
-	}
-	if !strings.Contains(body, "service3") {
-		t.Fatalf("body %q does not contain service3", body)
-	}
-}
-
-func TestShouldReturn502GivenUnknownHostWhenHTTPGetThroughBuick(t *testing.T) {
-	requireIntegration(t)
-	client := &http.Client{Timeout: 10 * time.Second}
-	code, _ := get(t, client, httpAddr()+"/", "unknown.localhost")
-	if code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want 502", code)
-	}
-}
-
-func TestShouldReturnService1EchoGivenService1HostWhenHTTPSGetThroughBuick(t *testing.T) {
-	requireIntegration(t)
-	client := &http.Client{
+func httpsTestClient() *http.Client {
+	return &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
-	code, body := get(t, client, httpsAddr()+"/", "service1.localhost")
-	if code != http.StatusOK {
-		t.Fatalf("status = %d, body = %q", code, body)
+}
+
+func assertResponse(t *testing.T, wantCode, code int, body, wantSubstring string) {
+	t.Helper()
+	if code != wantCode {
+		t.Fatalf("status = %d, want %d, body = %q", code, wantCode, body)
 	}
-	if !strings.Contains(body, "service1") {
-		t.Fatalf("body %q", body)
+	if wantSubstring != "" && !strings.Contains(body, wantSubstring) {
+		t.Fatalf("body %q does not contain %q", body, wantSubstring)
 	}
+}
+
+func TestShouldReturnService1EchoGivenService1HostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	code, body := get(t, httpTestClient(), httpAddr()+"/", "service1.localhost")
+	assertResponse(t, http.StatusOK, code, body, "service1")
+}
+
+func TestShouldReturnService2EchoGivenService2HostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	code, body := get(t, httpTestClient(), httpAddr()+"/", "service2.localhost")
+	assertResponse(t, http.StatusOK, code, body, "service2")
+}
+
+func TestShouldReturnService3EchoGivenService3HostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	code, body := get(t, httpTestClient(), httpAddr()+"/", "service3.localhost")
+	assertResponse(t, http.StatusOK, code, body, "service3")
+}
+
+func TestShouldReturn502GivenUnknownHostWhenHTTPGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	code, body := get(t, httpTestClient(), httpAddr()+"/", "unknown.localhost")
+	assertResponse(t, http.StatusBadGateway, code, body, "")
+}
+
+func TestShouldReturnService1EchoGivenService1HostWhenHTTPSGetThroughBuick(t *testing.T) {
+	requireIntegration(t)
+	code, body := get(t, httpsTestClient(), httpsAddr()+"/", "service1.localhost")
+	assertResponse(t, http.StatusOK, code, body, "service1")
 }
