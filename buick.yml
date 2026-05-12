@@ -1,5 +1,5 @@
 # Minimal example: listeners default to :80 and :443 when cert_file + key_file are set.
-# mkdir -p dev/buick/certs && buick init
+# buick init creates parent directories for cert_file / key_file as needed.
 # Targets use Compose DNS names on the same network as buickd; on the host use 127.0.0.1 (see buick.host.example.yml).
 proxy:
   cert_file: "./dev/buick/certs/localhost.pem"

@@ -33,6 +33,24 @@ type Options struct {
 	NoFirefox bool
 }
 
+func ensureParentDirs(pemPaths ...string) error {
+	seen := make(map[string]struct{})
+	for _, p := range pemPaths {
+		d := filepath.Dir(p)
+		if d == "" || d == "." {
+			continue
+		}
+		if _, ok := seen[d]; ok {
+			continue
+		}
+		seen[d] = struct{}{}
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return fmt.Errorf("mkdir %q: %w", d, err)
+		}
+	}
+	return nil
+}
+
 // GenerateAndTrust creates a local CA, issues a leaf TLS certificate for the
 // hostnames derived from cfg, writes leaf PEMs to cfg's cert_file/key_file,
 // writes the CA next to the leaf cert, and installs the CA using OS tools on
@@ -45,6 +63,10 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 	keyPath := filepath.Clean(strings.TrimSpace(cfg.Proxy.KeyFile))
 	if certPath == "" || keyPath == "" {
 		return errors.New("proxy.cert_file and proxy.key_file are required")
+	}
+
+	if err := ensureParentDirs(certPath, keyPath); err != nil {
+		return err
 	}
 
 	caDir := filepath.Dir(certPath)
@@ -88,9 +110,6 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(caCertPath), 0o755); err != nil && filepath.Dir(caCertPath) != "." {
-		return fmt.Errorf("mkdir: %w", err)
-	}
 	if err := writePEM(caCertPath, "CERTIFICATE", caDER, 0o644); err != nil {
 		return err
 	}
@@ -122,18 +141,6 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 		return fmt.Errorf("create leaf cert: %w", err)
 	}
 
-	cdir := filepath.Dir(certPath)
-	if cdir != "" && cdir != "." {
-		if err := os.MkdirAll(cdir, 0o755); err != nil {
-			return fmt.Errorf("mkdir leaf dir: %w", err)
-		}
-	}
-	kdir := filepath.Dir(keyPath)
-	if kdir != "" && kdir != "." && kdir != cdir {
-		if err := os.MkdirAll(kdir, 0o755); err != nil {
-			return fmt.Errorf("mkdir key dir: %w", err)
-		}
-	}
 	if err := writePEM(certPath, "CERTIFICATE", leafDER, 0o644); err != nil {
 		return err
 	}
