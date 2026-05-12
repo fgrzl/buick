@@ -157,40 +157,28 @@ Without trusting the CA or leaf, browsers will warn until you import trust or sw
 
 ## Docker Compose recipe
 
-This repo ships **`compose.yml`** + **`compose.buick.yml`** for the [integration stack](#integration-tests-docker). For your app, copy the patterns into your own Compose file.
+This repo ships **`compose.yml`** + **`compose.buick.yml`** for the [integration stack](#integration-tests-docker). For day-to-day use, a published image is enough: the image [defaults](cmd/buickd/Dockerfile) to **`--config /etc/buick/buick.yml`**, so you do not need a **`command:`** line if you mount the config there.
 
-### Example `docker-compose.yml` (buickd + persisted certs)
+### Minimal `docker-compose.yml`
 
-Build context = directory containing this repo (or your image). Bind-mount **`./certs`** so TLS survives container recreation. **`extra_hosts`** with **`host-gateway`** helps **`host.docker.internal`** and **`*.localhost`** reach processes on the host.
-
-Default examples may listen on **80** / **443**; binding ports below 1024 in containers may need elevated user or capabilities for local dev, or use high ports in YAML (`:8080` / `:8443`) and map them in `ports:`.
+Replace the image with your registry tag if you use a fork or pin by digest. Bind-mount a **config** and a **certs directory** so TLS material survives container restarts.
 
 ```yaml
 services:
-  buickd:
-    build:
-      context: .
-      dockerfile: cmd/buickd/Dockerfile
+  buick:
+    image: ghcr.io/fgrzl/buick:latest
     restart: unless-stopped
-    command: ["--config", "/etc/buick/buick.yml"]
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./buick.docker.yml:/etc/buick/buick.yml:ro
-      - ./certs:/etc/buick/certs
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-      - "service1.localhost:host-gateway"
-      - "service2.localhost:host-gateway"
-      # add one line per hostname you route in buick.yml
-    # If buickd cannot write TLS files into ./certs (Linux bind-mount ownership):
-    # user: "0:0"
+      - ./dev/buick.yml:/etc/buick/buick.yml:ro
+      - ./dev/buick/certs:/etc/buick/certs
 ```
 
-### Example `buick.docker.yml` (paths and upstreams inside Docker)
+### Example `dev/buick.yml` (paths inside the container)
 
-Use **paths under the cert volume** and **`http://host.docker.internal:PORT`** for apps on the host (`127.0.0.1` inside the container is not your laptop).
+Use **paths under `/etc/buick/certs`**. For apps on the **host**, dial **`http://host.docker.internal:PORT`** (`127.0.0.1` from inside the container is not your laptop).
 
 ```yaml
 proxy:
@@ -206,31 +194,42 @@ services:
     target: "http://host.docker.internal:8081"
 ```
 
-**buickd** here listens on **80** / **443**; upstreams use **8080**, **8081**, etc. on the host to avoid clashes.
+**buickd** listens on **80** / **443** here; upstreams use **8080**, **8081**, etc. on the host so nothing collides with the proxy ports.
 
-If **buickd** runs in the **same** Compose project as your APIs, use one user-defined network and **`http://service1:8080`**-style targets (see **`buick.yml`** / **`compose.buick.yml`**).
+If **buickd** runs in the **same** Compose project as your APIs, attach both to one user-defined network and use **`http://service1:8080`**-style targets (see **`buick.yml`** / **`compose.buick.yml`**). Then you usually do not need **`extra_hosts`**.
+
+### Optional Compose snippets
+
+| Situation | Add to the service |
+|-----------|-------------------|
+| Build from this repo instead of pulling | `build: { context: ., dockerfile: cmd/buickd/Dockerfile }` and drop or override **`image`**. |
+| Linux Docker Engine, upstreams on the host via **`host.docker.internal`** | `extra_hosts: ["host.docker.internal:host-gateway"]` (Docker Desktop already defines **`host.docker.internal`**). |
+| Upstream URL uses **`something.localhost`** and must resolve to the **host** from inside the container | `extra_hosts: ["something.localhost:host-gateway"]` (one entry per hostname you dial that way). |
+| **`buickd` cannot write** TLS files into a bind-mounted cert dir (common on Linux with the **nonroot** image) | `user: "0:0"` for local dev only, or use a **named volume** for **`/etc/buick/certs`** instead of a host bind-mount. |
+
+Listening on **80** / **443** inside the container is fine; if your **host** cannot bind low ports, use **`:8080` / `:8443`** in the YAML and map **`8080:8080`** in **`ports`**.
 
 ### First run and trust
 
 ```bash
-mkdir -p certs
+mkdir -p dev/buick/certs
 ```
 
 On the **host**, with **`buick`** [installed](#install-the-buick-cli), align paths with your Compose volume, then:
 
 ```bash
-buick init --config ./buick.docker.yml
-docker compose up -d --build
+buick init --config ./dev/buick.yml
+docker compose up -d
 ```
 
 **Without `buick init`**, pick one:
 
-1. **buickd-generated self-signed** — After first start, trust **`./certs/localhost.pem`** (or your configured filenames) in the OS or Firefox. Existing PEMs are reused until deleted.
+1. **buickd-generated self-signed** — After first start, trust **`./dev/buick/certs/localhost.pem`** (or your configured filenames) in the OS or Firefox. Existing PEMs are reused until deleted.
 
 2. **mkcert** — `mkcert -install` once, then write leaf files matching `cert_file` / `key_file`:
 
    ```bash
-   mkcert -cert-file ./certs/localhost.pem -key-file ./certs/localhost-key.pem \
+   mkcert -cert-file ./dev/buick/certs/localhost.pem -key-file ./dev/buick/certs/localhost-key.pem \
      localhost 127.0.0.1 ::1 service1.localhost service2.localhost service3.localhost
    ```
 
