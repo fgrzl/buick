@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +110,35 @@ func TestShouldRoundRobinPeersGivenMultipleTargetsWhenSequentialRequests(t *test
 		if got := rr.Body.String(); got != want {
 			t.Fatalf("req %d: body %q want %q", i, got, want)
 		}
+	}
+}
+
+func TestShouldReturnRoutesSortedByHostGivenUnorderedRouteSliceWhenRoutesCalled(t *testing.T) {
+	u := mustURL(t, "http://127.0.0.1:9")
+	rt := NewRouter([]config.Resolved{
+		{Host: "z.h", Targets: []*url.URL{u}},
+		{Host: "a.h", Targets: []*url.URL{u}},
+		{Host: "m.h", Targets: []*url.URL{u}},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rs := rt.Routes()
+	if len(rs) != 3 {
+		t.Fatalf("len = %d", len(rs))
+	}
+	got := []string{rs[0].Host, rs[1].Host, rs[2].Host}
+	want := []string{"a.h", "m.h", "z.h"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Routes() = %v, want %v", got, want)
+	}
+}
+
+func TestShouldMatchRouteCountGivenRouterWithMultipleHostsWhenRouteCountCalled(t *testing.T) {
+	u := mustURL(t, "http://127.0.0.1:9")
+	rt := NewRouter([]config.Resolved{
+		{Host: "z.h", Targets: []*url.URL{u}},
+		{Host: "a.h", Targets: []*url.URL{u}},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if n, m := rt.RouteCount(), len(rt.Routes()); n != m {
+		t.Fatalf("RouteCount=%d, len(Routes())=%d", n, m)
 	}
 }
 

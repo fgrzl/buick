@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,28 +62,39 @@ func buildRouteMap(routes []config.Resolved) map[string]config.Resolved {
 	return m
 }
 
-// Routes returns a snapshot copy of configured routes (for management API).
+// Routes returns a snapshot copy of configured routes (for management API),
+// sorted by hostname for stable JSON from /_buick/routes.
 func (rt *Router) Routes() []config.Resolved {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	out := make([]config.Resolved, 0, len(rt.routes))
-	for _, r := range rt.routes {
-		out = append(out, r)
+	hosts := make([]string, 0, len(rt.routes))
+	for h := range rt.routes {
+		hosts = append(hosts, h)
+	}
+	slices.Sort(hosts)
+	out := make([]config.Resolved, 0, len(hosts))
+	for _, h := range hosts {
+		out = append(out, rt.routes[h])
 	}
 	return out
 }
 
+// RouteCount returns the number of configured host routes (cheap; for /_buick/health).
+func (rt *Router) RouteCount() int {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	return len(rt.routes)
+}
+
 // Reload replaces the route table and clears the reverse-proxy cache.
+// When metrics are enabled, per-host counters are synced to the new route hostnames after the lock is released.
 func (rt *Router) Reload(routes []config.Resolved) {
+	hosts := config.HostsFromResolved(routes)
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
 	rt.routes = buildRouteMap(routes)
 	rt.pools = make(map[string]*upstreamPool)
+	rt.mu.Unlock()
 	if rt.metrics != nil {
-		hosts := make([]string, 0, len(routes))
-		for _, r := range routes {
-			hosts = append(hosts, r.Host)
-		}
 		rt.metrics.SyncHosts(hosts)
 	}
 }
@@ -100,15 +112,26 @@ func poolKey(r config.Resolved) string {
 	return b.String()
 }
 
+// poolFor returns the upstream pool for r, building it if needed. newUpstreamPool runs outside the
+// mutex; a duplicate pool may be built and discarded if another goroutine wins the insert race.
 func (rt *Router) poolFor(r config.Resolved) *upstreamPool {
 	key := poolKey(r)
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
 	if p, ok := rt.pools[key]; ok {
+		rt.mu.Unlock()
 		return p
 	}
+	rt.mu.Unlock()
+
 	p := newUpstreamPool(r, rt.log)
+
+	rt.mu.Lock()
+	if p2, ok := rt.pools[key]; ok {
+		rt.mu.Unlock()
+		return p2
+	}
 	rt.pools[key] = p
+	rt.mu.Unlock()
 	return p
 }
 

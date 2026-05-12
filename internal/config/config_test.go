@@ -1,8 +1,10 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -112,6 +114,51 @@ func TestShouldRejectConfigGivenDuplicateNormalizedHostsWhenValidate(t *testing.
 	}
 }
 
+func TestShouldReturnRoutesSortedByHostGivenUnorderedYAMLMapKeysWhenValidate(t *testing.T) {
+	routes := mustLoadValidateYAML(t, `
+proxy:
+  http: ":0"
+
+services:
+  zzz.localhost:
+    target: "http://127.0.0.1:3"
+  aaa.localhost:
+    target: "http://127.0.0.1:1"
+  mmm.localhost:
+    target: "http://127.0.0.1:2"
+`)
+	if len(routes) != 3 {
+		t.Fatalf("len = %d", len(routes))
+	}
+	hosts := []string{routes[0].Host, routes[1].Host, routes[2].Host}
+	if !slices.IsSorted(hosts) {
+		t.Fatalf("routes not sorted by host: %v", hosts)
+	}
+	if hosts[0] != "aaa.localhost" || hosts[1] != "mmm.localhost" || hosts[2] != "zzz.localhost" {
+		t.Fatalf("unexpected order: %v", hosts)
+	}
+}
+
+func TestShouldReturnSortedHostnamesForCertGivenServiceMapWhenHostnamesForCertCalled(t *testing.T) {
+	root := &Root{
+		Proxy: Proxy{HTTP: ":80", HTTPS: ":443", CertFile: "c.pem", KeyFile: "k.pem"},
+		Services: map[string]Service{
+			"zebra.test": {Target: "http://x"},
+			"apple.test": {Target: "http://y"},
+		},
+	}
+	got := HostnamesForCert(root)
+	if !slices.IsSorted(got) {
+		t.Fatalf("not sorted: %v", got)
+	}
+	wantSubset := []string{"127.0.0.1", "::1", "localhost", "apple.test", "zebra.test"}
+	for _, w := range wantSubset {
+		if !slices.Contains(got, w) {
+			t.Fatalf("missing %q in %v", w, got)
+		}
+	}
+}
+
 func TestShouldParseMultipleTargetsGivenYAMLWithTargetsListWhenLoadAndValidate(t *testing.T) {
 	routes := mustLoadValidateYAML(t, `
 proxy:
@@ -129,6 +176,26 @@ services:
 	if routes[0].Targets[0].String() != "http://127.0.0.1:1" || routes[0].Targets[1].String() != "http://127.0.0.1:2" {
 		t.Fatalf("targets: %+v", routes[0].Targets)
 	}
+}
+
+func TestShouldReturnHostsInOrderGivenResolvedSliceWhenHostsFromResolvedCalled(t *testing.T) {
+	routes := []Resolved{
+		{Host: "b", Targets: []*url.URL{mustParseURL(t, "http://127.0.0.1:1")}},
+		{Host: "a", Targets: []*url.URL{mustParseURL(t, "http://127.0.0.1:2")}},
+	}
+	got := HostsFromResolved(routes)
+	if !slices.Equal(got, []string{"b", "a"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func mustParseURL(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
 }
 
 func mustLoadValidateYAML(t *testing.T, raw string) []Resolved {

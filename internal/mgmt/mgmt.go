@@ -11,6 +11,7 @@ import (
 // RouteReader is implemented by the proxy router for introspection.
 type RouteReader interface {
 	Routes() []config.Resolved
+	RouteCount() int
 }
 
 // Wrap returns a handler that serves /_buick/* on loopback clients before delegating to inner.
@@ -27,12 +28,11 @@ func Wrap(inner http.Handler, routes RouteReader, start time.Time, version, http
 
 		switch r.URL.Path {
 		case "/_buick/health":
-			rs := routes.Routes()
 			resp := map[string]any{
 				"status":   "ok",
 				"version":  version,
 				"uptime_s": int64(time.Since(start).Seconds()),
-				"routes":   len(rs),
+				"routes":   routes.RouteCount(),
 				"http":     httpAddr,
 				"https":    httpsAddr,
 			}
@@ -68,7 +68,7 @@ func Wrap(inner http.Handler, routes RouteReader, start time.Time, version, http
 			w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 			m.WritePrometheus(w)
 		default:
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			http.NotFound(w, r)
 		}
 	})
 }

@@ -98,6 +98,7 @@ Top-level fields:
 Each `services` entry maps a hostname to an upstream:
 
 - `target`: absolute `http://` or `https://` URL for the upstream. The hostname in the URL is whatever **buickd** must dial: use **Compose service names** (for example **`http://api:8080`**) when **buickd** shares a user-defined network with the backend; use **`http://host.docker.internal:PORT`** when the backend listens on the **host** and **buickd** runs in a container; use **`http://127.0.0.1:PORT`** when **buickd** runs on the **same machine** as the backend.
+- `targets`: optional list of absolute upstream URLs for the same hostname. When set (non-empty), **buickd** round-robins across them; do not set `target` in the same entry. There is **no** health checking: every peer is chosen in rotation regardless of availability (use an external load balancer or orchestrator health if you need that).
 - `websocket`: when true, disables response buffering (`FlushInterval`) suitable for upgrades.
 - `read_timeout` / `write_timeout`: optional `time.ParseDuration` strings. Defaults are 60s for normal HTTP and 168h for websocket services unless overridden.
 
@@ -110,6 +111,12 @@ Forwarded headers set on the upstream request:
 - `X-Forwarded-For` (appended client IP)
 
 The original client `Host` header is preserved on the proxied request (not rewritten to the upstream hostname).
+
+## Operations
+
+**Management and metrics (loopback only):** On HTTP and HTTPS listeners, **`GET /_buick/health`**, **`GET /_buick/routes`**, and **`GET /_buick/metrics`** are answered only when the **TCP client address is loopback** (`127.0.0.1`, `::1`, etc.), based on `RemoteAddr`. They are intended for local checks and debugging. If **buickd** sits behind another reverse proxy, those paths usually **will not** trigger unless the proxy forwards from loopback or you query **buickd** directly on loopback. **`/_buick/routes`** returns routes **sorted by hostname** so output is stable for scripts and diffs. Unknown paths under **`/_buick/`** (for example a typo) return **404** on loopback.
+
+**Reload:** Send **`SIGHUP`** to reload the route table from the same **`--config`** file (Unix convention; may not apply on all Windows setups). If load or validation fails, the previous routes stay in place. **Listener addresses** and the **HTTP server read/write timeouts** are **not** changed until you restart the process; TLS leaf material may be refreshed via the same dev-cert logic as startup when HTTPS is enabled.
 
 ## TLS for local HTTPS
 

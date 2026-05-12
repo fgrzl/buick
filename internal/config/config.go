@@ -2,11 +2,13 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,6 +146,9 @@ func Validate(root *Root) ([]Resolved, error) {
 			WriteTimeout: wt,
 		})
 	}
+	slices.SortFunc(resolved, func(a, b Resolved) int {
+		return cmp.Compare(a.Host, b.Host)
+	})
 	return resolved, nil
 }
 
@@ -210,6 +215,17 @@ func NormalizeHost(host string) string {
 	return host
 }
 
+// HostsFromResolved returns each route's Host in slice order (matches Validate output order).
+func HostsFromResolved(routes []Resolved) []string {
+	hosts := make([]string, 0, len(routes))
+	for _, r := range routes {
+		if r.Host != "" {
+			hosts = append(hosts, r.Host)
+		}
+	}
+	return hosts
+}
+
 // MaxEffectiveTimeouts returns server-wide read/write caps from resolved routes.
 func MaxEffectiveTimeouts(routes []Resolved) (read, write time.Duration) {
 	read, write = defaultHTTPReadTimeout, defaultHTTPWriteTimeout
@@ -240,5 +256,6 @@ func HostnamesForCert(root *Root) []string {
 	for h := range set {
 		out = append(out, h)
 	}
+	slices.Sort(out)
 	return out
 }

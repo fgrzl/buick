@@ -19,6 +19,7 @@ import (
 	"github.com/fgrzl/buick/internal/buildinfo"
 	"github.com/fgrzl/buick/internal/certs"
 	"github.com/fgrzl/buick/internal/config"
+	"github.com/fgrzl/buick/internal/mgmt"
 	"github.com/fgrzl/buick/internal/proxy"
 )
 
@@ -39,9 +40,9 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "buickd: --config is required")
 		return 2
 	}
-	*configPath = filepath.Clean(strings.TrimSpace(*configPath))
+	configFile := filepath.Clean(strings.TrimSpace(*configPath))
 
-	root, err := config.Load(*configPath)
+	root, err := config.Load(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "buickd: load config: %v\n", err)
 		return 1
@@ -55,13 +56,10 @@ func run() int {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	log.Info("starting", "version", buildinfo.Version, "commit", buildinfo.Commit, "build_date", buildinfo.BuildDate)
 
-	if err := ensureTLSMaterial(root, log); err != nil {
+	if err := ensureTLSMaterial(root, log, true); err != nil {
 		fmt.Fprintf(os.Stderr, "buickd: tls: %v\n", err)
 		return 1
 	}
-
-	handler := proxy.NewRouter(routes, log)
-	readTO, writeTO := config.MaxEffectiveTimeouts(routes)
 
 	httpAddr := strings.TrimSpace(root.Proxy.HTTP)
 	httpsAddr := strings.TrimSpace(root.Proxy.HTTPS)
@@ -70,6 +68,13 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "buickd: no listeners configured")
 		return 1
 	}
+
+	startTime := time.Now()
+	metrics := mgmt.NewMetrics(config.HostsFromResolved(routes))
+	rt := proxy.NewRouter(routes, log, proxy.WithMetrics(metrics))
+	handler := mgmt.Wrap(rt, rt, startTime, buildinfo.Version, httpAddr, httpsAddr, metrics)
+
+	readTO, writeTO := config.MaxEffectiveTimeouts(routes)
 
 	var servers []*http.Server
 
@@ -100,6 +105,22 @@ func run() int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	sigHup := make(chan os.Signal, 1)
+	signal.Notify(sigHup, syscall.SIGHUP)
+	go func() {
+		defer signal.Stop(sigHup)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sigHup:
+				if err := reloadConfig(configFile, log, rt); err != nil {
+					log.Warn("reload skipped", "err", err)
+				}
+			}
+		}
+	}()
 
 	errCh := make(chan error, len(servers))
 
@@ -149,6 +170,24 @@ func run() int {
 	return 0
 }
 
+func reloadConfig(path string, log *slog.Logger, rt *proxy.Router) error {
+	root, err := config.Load(path)
+	if err != nil {
+		return fmt.Errorf("load: %w", err)
+	}
+	routes, err := config.Validate(root)
+	if err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	if err := ensureTLSMaterial(root, log, false); err != nil {
+		return fmt.Errorf("tls: %w", err)
+	}
+	rt.Reload(routes)
+	log.Info("config reloaded", "routes", len(routes),
+		"note", "listener addresses and server read/write timeouts unchanged until process restart")
+	return nil
+}
+
 func shutdownServers(log *slog.Logger, servers []*http.Server) {
 	shCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -162,7 +201,7 @@ func shutdownServers(log *slog.Logger, servers []*http.Server) {
 	}
 }
 
-func ensureTLSMaterial(root *config.Root, log *slog.Logger) error {
+func ensureTLSMaterial(root *config.Root, log *slog.Logger, logExistingMaterial bool) error {
 	if strings.TrimSpace(root.Proxy.HTTPS) == "" {
 		return nil
 	}
@@ -173,7 +212,7 @@ func ensureTLSMaterial(root *config.Root, log *slog.Logger) error {
 	}
 	if gen {
 		log.Info("generated dev tls material", "cert", root.Proxy.CertFile, "key", root.Proxy.KeyFile)
-	} else {
+	} else if logExistingMaterial {
 		log.Info("using existing tls material", "cert", root.Proxy.CertFile, "key", root.Proxy.KeyFile)
 	}
 	return nil

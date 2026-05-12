@@ -3,6 +3,7 @@ package mgmt
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -73,7 +74,13 @@ func (m *Metrics) Record(normalizedHost string, matched bool) {
 func (m *Metrics) WritePrometheus(w io.Writer) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for host, c := range m.byHost {
+	hosts := make([]string, 0, len(m.byHost))
+	for host := range m.byHost {
+		hosts = append(hosts, host)
+	}
+	slices.Sort(hosts)
+	for _, host := range hosts {
+		c := m.byHost[host]
 		_, _ = fmt.Fprintf(w, "buick_requests_total{host=%q} %d\n", host, c.Load())
 	}
 	if u := m.unknown.Load(); u > 0 {
