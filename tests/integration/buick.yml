@@ -3,8 +3,7 @@
 proxy:
   http: ":8080"
   https: ":8443"
-  cert_file: "/etc/buick/certs/localhost.pem"
-  key_file: "/etc/buick/certs/localhost-key.pem"
+  certs_path: "/etc/buick/certs"
 
 services:
   service1.localhost:

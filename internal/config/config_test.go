@@ -73,7 +73,7 @@ func TestShouldApplyDefaultHTTPGivenEmptyListenersAndNoCertsWhenValidate(t *test
 
 func TestShouldApplyDefaultHTTPAndHTTPSGivenEmptyListenersAndCertPathsWhenValidate(t *testing.T) {
 	root := &Root{
-		Proxy: Proxy{CertFile: "c.pem", KeyFile: "k.pem"},
+		Proxy: Proxy{HTTPS: ":443"},
 		Services: map[string]Service{
 			"a": {Target: "http://127.0.0.1:1"},
 		},
@@ -86,15 +86,23 @@ func TestShouldApplyDefaultHTTPAndHTTPSGivenEmptyListenersAndCertPathsWhenValida
 	}
 }
 
-func TestShouldRejectConfigGivenHTTPSWithoutCertPathsWhenValidate(t *testing.T) {
-	_, err := Validate(&Root{
+func TestShouldDeriveDefaultTLSPathsGivenHTTPSWhenNoExplicitPEMWhenValidate(t *testing.T) {
+	root := &Root{
 		Proxy: Proxy{HTTP: ":80", HTTPS: ":443"},
 		Services: map[string]Service{
-			"a": {Target: "http://x"},
+			"a": {Target: "http://127.0.0.1:1"},
 		},
-	})
-	if err == nil {
-		t.Fatal("expected error when https without cert paths")
+	}
+	if _, err := Validate(root); err != nil {
+		t.Fatal(err)
+	}
+	wantCert := filepath.Join(filepath.Clean(defaultCertsWriteDir), leanLeafCert)
+	wantKey := filepath.Join(filepath.Clean(defaultCertsWriteDir), leanLeafKey)
+	if root.Proxy.CertFile != wantCert || root.Proxy.KeyFile != wantKey {
+		t.Fatalf("proxy pem: %q %q want %q %q", root.Proxy.CertFile, root.Proxy.KeyFile, wantCert, wantKey)
+	}
+	if root.Certs.Path != defaultCertsWriteDir {
+		t.Fatalf("certs.path: got %q", root.Certs.Path)
 	}
 }
 
@@ -162,7 +170,7 @@ services:
 
 func TestShouldReturnSortedHostnamesForCertGivenServiceMapWhenHostnamesForCertCalled(t *testing.T) {
 	root := &Root{
-		Proxy: Proxy{HTTP: ":80", HTTPS: ":443", CertFile: "c.pem", KeyFile: "k.pem"},
+		Proxy: Proxy{HTTP: ":80"},
 		Services: map[string]Service{
 			"zebra.test": {Target: "http://x"},
 			"apple.test": {Target: "http://y"},
@@ -239,8 +247,7 @@ func TestShouldApplyListenDefaultsGivenYAMLWithOnlyCertsAndServicesWhenLoadAndVa
 	path := filepath.Join(dir, "buick.yml")
 	raw := `
 proxy:
-  cert_file: "c.pem"
-  key_file: "k.pem"
+  https: ":443"
 services:
   a.localhost:
     target: "http://127.0.0.1:1"
@@ -257,6 +264,143 @@ services:
 	}
 	if root.Proxy.HTTP != defaultListenHTTP || root.Proxy.HTTPS != defaultListenHTTPS {
 		t.Fatalf("proxy: %+v", root.Proxy)
+	}
+	wantCert := filepath.Join(filepath.Clean(defaultCertsWriteDir), leanLeafCert)
+	if root.Proxy.CertFile != wantCert {
+		t.Fatalf("derived cert: got %q want %q", root.Proxy.CertFile, wantCert)
+	}
+}
+
+func TestLoadRejectsRemovedPEMFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	raw := `
+proxy:
+  https: ":443"
+  cert_file: "old.pem"
+services:
+  a.localhost:
+    target: "http://127.0.0.1:1"
+`
+	if err := writeFile(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsUnknownFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	raw := `
+proxy:
+  wat: true
+services:
+  a.localhost:
+    target: "http://127.0.0.1:1"
+`
+	if err := writeFile(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsRemovedWebSocketField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	raw := `
+proxy:
+  http: ":80"
+services:
+  a.localhost:
+    target: "http://127.0.0.1:1"
+    websocket: true
+`
+	if err := writeFile(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestInitWritePEMPathsUsesCertsPathWhenSet(t *testing.T) {
+	root := &Root{Certs: Certs{Path: "./dev/w"}}
+	c, k, err := InitWritePEMPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantC := filepath.Join(filepath.Clean("./dev/w"), leanLeafCert)
+	wantK := filepath.Join(filepath.Clean("./dev/w"), leanLeafKey)
+	if c != wantC || k != wantK {
+		t.Fatalf("got %q %q want %q %q", c, k, wantC, wantK)
+	}
+}
+
+func TestInitWritePEMPathsDefaultsWhenCertsPathEmpty(t *testing.T) {
+	root := &Root{}
+	c, k, err := InitWritePEMPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantC := filepath.Join(filepath.Clean(defaultCertsWriteDir), leanLeafCert)
+	wantK := filepath.Join(filepath.Clean(defaultCertsWriteDir), leanLeafKey)
+	if c != wantC || k != wantK {
+		t.Fatalf("got %q %q want %q %q", c, k, wantC, wantK)
+	}
+}
+
+func TestShouldValidateLeanMeshExampleYAMLWhenLoadAndValidate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	raw := `
+certs:
+  path: "./dev/buick/certs"
+proxy:
+  http: ":80"
+  https: ":443"
+  certs_path: "./etc/buick/certs"
+services:
+  mesh.localhost:
+    target: "http://mesh-core:8080"
+  stream.localhost:
+    target: "http://mesh-stream:9444"
+    read_timeout: "168h"
+    write_timeout: "168h"
+`
+	if err := writeFile(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	root, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	routes, err := Validate(root)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	wantProxyCert := filepath.Join(filepath.Clean("./etc/buick/certs"), leanLeafCert)
+	wantProxyKey := filepath.Join(filepath.Clean("./etc/buick/certs"), leanLeafKey)
+	if root.Proxy.CertFile != wantProxyCert || root.Proxy.KeyFile != wantProxyKey {
+		t.Fatalf("buickd pem: cert=%q key=%q", root.Proxy.CertFile, root.Proxy.KeyFile)
+	}
+	if filepath.Clean(root.Certs.Path) != filepath.Clean("./dev/buick/certs") {
+		t.Fatalf("certs.path: %q", root.Certs.Path)
+	}
+	cert, key, err := InitWritePEMPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantInit := filepath.Join(filepath.Clean("./dev/buick/certs"), leanLeafCert)
+	wantInitK := filepath.Join(filepath.Clean("./dev/buick/certs"), leanLeafKey)
+	if cert != wantInit || key != wantInitK {
+		t.Fatalf("init write: %q %q", cert, key)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("routes: %d", len(routes))
 	}
 }
 

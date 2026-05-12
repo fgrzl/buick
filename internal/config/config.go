@@ -2,12 +2,14 @@
 package config
 
 import (
+	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -17,16 +19,24 @@ import (
 
 // Root is the top-level configuration document.
 type Root struct {
+	Certs    Certs              `yaml:"certs"`
 	Proxy    Proxy              `yaml:"proxy"`
 	Services map[string]Service `yaml:"services"`
 }
 
-// Proxy holds listener and TLS file paths.
+// Certs holds optional paths for buick init output (see InitWritePEMPaths).
+type Certs struct {
+	Path string `yaml:"path"`
+}
+
+// Proxy holds listener addresses and TLS directory configuration.
+// CertFile and KeyFile are derived from CertsPath (not YAML); see expandLeanCertConfig.
 type Proxy struct {
-	HTTP     string `yaml:"http"`
-	HTTPS    string `yaml:"https"`
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
+	HTTP      string `yaml:"http"`
+	HTTPS     string `yaml:"https"`
+	CertsPath string `yaml:"certs_path"`
+	CertFile  string `yaml:"-"`
+	KeyFile   string `yaml:"-"`
 }
 
 // Service describes one hostname route.
@@ -53,6 +63,13 @@ const (
 
 	defaultListenHTTP  = ":80"
 	defaultListenHTTPS = ":443"
+
+	// Lean TLS: fixed leaf names under proxy.certs_path (buickd) and certs.path (buick init).
+	leanLeafCert = "localhost.pem"
+	leanLeafKey  = "localhost-key.pem"
+
+	defaultCertsWriteDir = "./buick/certs"
+	defaultProxyCertsDir = "./dev/buick/certs"
 )
 
 // Load reads and parses a YAML config file.
@@ -61,16 +78,123 @@ func Load(path string) (*Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parse yaml: %w", err)
+	}
+	if err := rejectRemovedFields(&doc); err != nil {
+		return nil, err
+	}
 	var root Root
-	if err := yaml.Unmarshal(data, &root); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&root); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
 	return &root, nil
 }
 
+func rejectRemovedFields(doc *yaml.Node) error {
+	root := mappingNode(doc)
+	if root == nil {
+		return nil
+	}
+	if _, ok := mappingValue(root, "init"); ok {
+		return errors.New("init block has been removed; use certs.path for buick init output")
+	}
+	if proxy, ok := mappingValue(root, "proxy"); ok {
+		pm := mappingNode(proxy)
+		if pm != nil {
+			if _, ok := mappingValue(pm, "cert_file"); ok {
+				return errors.New("proxy.cert_file has been removed; use proxy.certs_path")
+			}
+			if _, ok := mappingValue(pm, "key_file"); ok {
+				return errors.New("proxy.key_file has been removed; use proxy.certs_path")
+			}
+		}
+	}
+	if services, ok := mappingValue(root, "services"); ok {
+		sm := mappingNode(services)
+		if sm != nil {
+			for i := 1; i < len(sm.Content); i += 2 {
+				svc := mappingNode(sm.Content[i])
+				if svc == nil {
+					continue
+				}
+				if _, ok := mappingValue(svc, "websocket"); ok {
+					return errors.New("services.*.websocket has been removed; WebSocket upgrades are automatic")
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func mappingNode(n *yaml.Node) *yaml.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
+		n = n.Content[0]
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	return n
+}
+
+func mappingValue(m *yaml.Node, key string) (*yaml.Node, bool) {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil, false
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1], true
+		}
+	}
+	return nil, false
+}
+
+func shouldDeriveLeanTLS(root *Root) bool {
+	if root == nil {
+		return false
+	}
+	if strings.TrimSpace(root.Proxy.HTTPS) != "" {
+		return true
+	}
+	if strings.TrimSpace(root.Proxy.CertsPath) != "" {
+		return true
+	}
+	if strings.TrimSpace(root.Certs.Path) != "" {
+		return true
+	}
+	return false
+}
+
+// expandLeanCertConfig sets certs.path and proxy.certs_path defaults, then fills
+// internal CertFile / KeyFile from (proxy.certs_path)/localhost.pem when TLS applies.
+func expandLeanCertConfig(root *Root) error {
+	if root == nil {
+		return nil
+	}
+	if !shouldDeriveLeanTLS(root) {
+		return nil
+	}
+	if strings.TrimSpace(root.Certs.Path) == "" {
+		root.Certs.Path = defaultCertsWriteDir
+	}
+	if strings.TrimSpace(root.Proxy.CertsPath) == "" {
+		root.Proxy.CertsPath = root.Certs.Path
+	}
+	base := filepath.Clean(root.Proxy.CertsPath)
+	root.Proxy.CertFile = filepath.Join(base, leanLeafCert)
+	root.Proxy.KeyFile = filepath.Join(base, leanLeafKey)
+	return nil
+}
+
 // applyProxyDefaults sets standard listen addresses when http/https are omitted.
-// If both cert_file and key_file are set, https defaults to :443; http defaults
-// to :80 whenever it was omitted. Call before validating listener fields.
+// When TLS paths are present (after expandLeanCertConfig), https defaults to :443;
+// http defaults to :80 when omitted.
 func applyProxyDefaults(root *Root) {
 	if root == nil {
 		return
@@ -95,12 +219,18 @@ func applyProxyDefaults(root *Root) {
 	if httpsEmpty && hasCerts {
 		root.Proxy.HTTPS = defaultListenHTTPS
 	}
+	if httpEmpty && !httpsEmpty && hasCerts {
+		root.Proxy.HTTP = defaultListenHTTP
+	}
 }
 
 // Validate checks proxy and service entries and returns resolved routes.
 func Validate(root *Root) ([]Resolved, error) {
 	if root == nil {
 		return nil, errors.New("config is nil")
+	}
+	if err := expandLeanCertConfig(root); err != nil {
+		return nil, err
 	}
 	applyProxyDefaults(root)
 	if strings.TrimSpace(root.Proxy.HTTP) == "" && strings.TrimSpace(root.Proxy.HTTPS) == "" {
@@ -112,11 +242,8 @@ func Validate(root *Root) ([]Resolved, error) {
 
 	https := strings.TrimSpace(root.Proxy.HTTPS) != ""
 	if https {
-		if strings.TrimSpace(root.Proxy.CertFile) == "" {
-			return nil, errors.New("proxy: cert_file is required when https is set")
-		}
-		if strings.TrimSpace(root.Proxy.KeyFile) == "" {
-			return nil, errors.New("proxy: key_file is required when https is set")
+		if strings.TrimSpace(root.Proxy.CertFile) == "" || strings.TrimSpace(root.Proxy.KeyFile) == "" {
+			return nil, errors.New("proxy: https requires TLS material (internal error: missing derived PEM paths)")
 		}
 	}
 
@@ -273,6 +400,21 @@ func MaxEffectiveTimeouts(routes []Resolved) (read, write time.Duration) {
 		write = defaultWSWriteTimeout
 	}
 	return read, write
+}
+
+// InitWritePEMPaths returns the leaf cert and key paths where buick init writes
+// PEM files (and places buick-root-ca.pem beside the leaf). Uses certs.path with
+// fixed names localhost.pem / localhost-key.pem (default ./buick/certs when omitted).
+func InitWritePEMPaths(root *Root) (certFile, keyFile string, err error) {
+	if root == nil {
+		return "", "", errors.New("config is nil")
+	}
+	dir := strings.TrimSpace(root.Certs.Path)
+	if dir == "" {
+		dir = defaultCertsWriteDir
+	}
+	dir = filepath.Clean(dir)
+	return filepath.Join(dir, leanLeafCert), filepath.Join(dir, leanLeafKey), nil
 }
 
 // HostnamesForCert returns unique hostnames (including normalized keys) for TLS SANs.

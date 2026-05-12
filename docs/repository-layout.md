@@ -7,7 +7,7 @@
 | **`compose.yml`** | Integration stack: nginx backends `service1`–`service3`, **`buickd`** on Docker network `buick-integration`, host ports **18080** (HTTP) / **18443** (HTTPS). |
 | **`tests/integration/buick.yml`** | **`buickd`** config for that stack: internal **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams like **`http://service1:8080`**. |
 | **`tests/integration/certs/`** | Fixture **`localhost.pem`** / **`localhost-key.pem`** for HTTPS in the stack (regenerate: **`go run ./tests/integration/gencerts`**). |
-| **`buick.yml`** | Minimal sample: **`cert_file`** / **`key_file`** under **`./dev/buick/certs/`**, **`services`** with Compose-style upstreams; **`http`** / **`https`** default to **`:80`** / **`:443`** when omitted. |
+| **`buick.yml`** | Minimal sample: **`certs.path`** / **`proxy.certs_path`** under **`./dev/buick/certs/`**, **`services`** with Compose-style upstreams; **`http`** / **`https`** default to **`:80`** / **`:443`** when omitted. |
 | **`buick.host.example.yml`** | Example for **`buickd` on the host** with upstreams on **`127.0.0.1`**. Copy or merge into your own file. |
 
 ## Trying the sample stack

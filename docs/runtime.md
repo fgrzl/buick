@@ -18,7 +18,7 @@ If **`buickd`** sits **behind another reverse proxy**, these URLs usually **do n
 
 Send **`SIGHUP`** to reload the route table from the same **`--config`** file (common on Unix; on Windows this may not be available). If load or validation fails, **old routes stay active**.
 
-**Not** reloaded until process restart: **listener addresses** and **server read/write timeouts**. On **`SIGHUP`**, **`buickd`** re-checks that **`cert_file`** and **`key_file`** still exist when HTTPS is enabled; it does not write or rotate PEMs.
+**Not** reloaded until process restart: **listener addresses** and **server read/write timeouts**. On **`SIGHUP`**, **`buickd`** re-checks that TLS leaf files still exist under **`proxy.certs_path`** when HTTPS is enabled; it does not write or rotate PEMs.
 
 ## Shutdown
 

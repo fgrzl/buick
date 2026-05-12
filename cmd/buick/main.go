@@ -33,10 +33,20 @@ func run() int {
 	flag.Parse()
 
 	if strings.TrimSpace(*configPath) == "" {
-		fmt.Fprintln(os.Stderr, "buick: --config is required (use buickd to run the proxy)")
-		return 2
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "buick: working directory: %v\n", err)
+			return 2
+		}
+		chosen, ok := findInitConfigFile(wd)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "buick: no %s in current directory; use --config\n", defaultInitConfigName)
+			return 2
+		}
+		*configPath = chosen
+	} else {
+		*configPath = filepath.Clean(strings.TrimSpace(*configPath))
 	}
-	*configPath = filepath.Clean(strings.TrimSpace(*configPath))
 
 	root, err := config.Load(*configPath)
 	if err != nil {

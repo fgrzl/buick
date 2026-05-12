@@ -10,10 +10,7 @@ func TestCheckLeafMaterialGivenBothFilesExistReturnsNil(t *testing.T) {
 	dir := t.TempDir()
 	cert := filepath.Join(dir, "c.pem")
 	key := filepath.Join(dir, "k.pem")
-	if err := os.WriteFile(cert, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(key, []byte("y"), 0o600); err != nil {
+	if _, err := EnsureDevPair(cert, key, []string{"localhost"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := CheckLeafMaterial(cert, key); err != nil {
@@ -43,6 +40,21 @@ func TestCheckLeafMaterialGivenPathIsDirectoryReturnsError(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := CheckLeafMaterial(certDir, key); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestCheckLeafMaterialGivenInvalidPEMReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "c.pem")
+	key := filepath.Join(dir, "k.pem")
+	if err := os.WriteFile(cert, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("y"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckLeafMaterial(cert, key); err == nil {
 		t.Fatal("expected error")
 	}
 }

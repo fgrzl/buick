@@ -28,7 +28,7 @@ func runInit(args []string) int {
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage: buick init [flags]\n\n")
 		_, _ = fmt.Fprintf(fs.Output(), "Generate a local Buick CA, issue a leaf TLS certificate for hostnames in the\n")
-		_, _ = fmt.Fprintf(fs.Output(), "config, write PEMs to proxy.cert_file / proxy.key_file, and install the CA\n")
+		_, _ = fmt.Fprintf(fs.Output(), "config, write PEMs under certs.path (see buick.yml), and install the CA\n")
 		_, _ = fmt.Fprintf(fs.Output(), "into this machine's trust store where supported (Windows / macOS login keychain /\n")
 		_, _ = fmt.Fprintf(fs.Output(), "Debian-like Linux with sudo). Firefox NSS is not modified; use -skip-trust to write PEMs only.\n\n")
 		_, _ = fmt.Fprintf(fs.Output(), "Run on the host before docker compose up so browsers trust HTTPS to *.localhost.\n\n")
@@ -90,7 +90,11 @@ func runInit(args []string) int {
 	}
 
 	fmt.Println("Buick TLS material written and CA installed for local development.")
-	leafCert := filepath.Clean(strings.TrimSpace(root.Proxy.CertFile))
-	fmt.Printf("CA certificate (backup / audit): %s\n", filepath.Join(filepath.Dir(leafCert), initca.RootCAFileName))
+	leafCert, _, err := config.InitWritePEMPaths(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "buick init: %v\n", err)
+		return 1
+	}
+	fmt.Printf("CA certificate (backup / audit): %s\n", filepath.Join(filepath.Dir(filepath.Clean(leafCert)), initca.RootCAFileName))
 	return 0
 }

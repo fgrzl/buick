@@ -16,7 +16,7 @@ Put Go’s **`bin`** on your **`PATH`** (for example `$HOME/go/bin` on Linux/mac
 
 ## TLS (`buick init`)
 
-Add a Buick YAML with **`proxy.cert_file`** and **`proxy.key_file`** (see [Configuration](docs/config-reference.md)). **`buick init`** creates missing parent directories for those paths, writes the leaf and local CA, and installs trust where the OS supports it.
+Add a Buick YAML with **`certs.path`** (where **`buick init`** writes) and **`proxy.certs_path`** (where **`buickd`** reads); both use fixed **`localhost.pem`** / **`localhost-key.pem`** names (see [Configuration](docs/config-reference.md)). **`buick init`** creates missing parent directories, writes the leaf and local CA, and installs trust where the OS supports it.
 
 ```bash
 buick init
@@ -34,8 +34,8 @@ services:
     image: ghcr.io/fgrzl/buick:latest
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:8080"
+      - "443:8443"
     volumes:
       - ./dev/buick.yml:/etc/buick/buick.yml:ro
       - ./dev/buick/certs:/etc/buick/certs

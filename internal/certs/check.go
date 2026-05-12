@@ -1,13 +1,14 @@
 package certs
 
 import (
+	"crypto/tls"
 	"fmt"
 	"os"
 	"path/filepath"
 )
 
 // CheckLeafMaterial returns nil when certFile and keyFile are existing regular
-// files. It does not read or validate PEM contents.
+// files containing a parseable certificate/private-key pair.
 func CheckLeafMaterial(certFile, keyFile string) error {
 	certFile = filepath.Clean(certFile)
 	keyFile = filepath.Clean(keyFile)
@@ -27,6 +28,9 @@ func CheckLeafMaterial(certFile, keyFile string) error {
 		if !fi.Mode().IsRegular() {
 			return fmt.Errorf("%s %q: expected a regular file", p.label, p.path)
 		}
+	}
+	if _, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
+		return fmt.Errorf("load TLS key pair cert %q key %q: %w", certFile, keyFile, err)
 	}
 	return nil
 }

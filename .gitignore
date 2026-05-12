@@ -31,7 +31,7 @@ go.work.sum
 /certs/*.pem
 /certs/*.key
 
-# Buick dev certs (see buick.yml proxy.cert_file / proxy.key_file)
+# Buick dev certs (see buick.yml certs.path / proxy.certs_path)
 /dev/buick/certs/
 
 # Environment

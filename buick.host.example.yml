@@ -1,8 +1,9 @@
 # Example: buickd on the host with upstreams on 127.0.0.1 (adjust ports to your apps).
-# buick init --config ./buick.host.example.yml  (creates cert parent dirs as needed)
+# buick init --config ./buick.host.example.yml
+certs:
+  path: "./dev/buick/certs"
 proxy:
-  cert_file: "./dev/buick/certs/localhost.pem"
-  key_file: "./dev/buick/certs/localhost-key.pem"
+  certs_path: "./dev/buick/certs"
 
 services:
   api.localhost:

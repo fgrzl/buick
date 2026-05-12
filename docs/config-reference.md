@@ -1,23 +1,31 @@
 # Configuration reference
 
-Buick reads one YAML file. The top level has **`proxy`** (listeners and TLS paths) and **`services`** (hostname → upstream).
+Buick reads one YAML file with **`certs`** (optional, where **`buick init`** writes), **`proxy`** (listeners and where **`buickd`** reads TLS files), and **`services`**.
+
+## `certs` (optional)
+
+| Field | Meaning |
+|-------|---------|
+| **`path`** | Directory on the machine where you run **`buick init`**. Files are always **`localhost.pem`**, **`localhost-key.pem`**, and **`buick-root-ca.pem`** (beside the leaf). Default **`./buick/certs`** when TLS is enabled and this field is omitted. **`buickd` does not read this block.** |
 
 ## `proxy`
 
 | Field | Meaning |
 |-------|---------|
-| **`http`** | HTTP listen address (e.g. **`:80`**). |
-| **`https`** | HTTPS listen address (e.g. **`:443`**). |
-| **`cert_file` / `key_file`** | Paths to the TLS leaf certificate and private key. When **`https`** is set, **both** must exist as regular files before **`buickd`** starts (see [TLS and certificates](tls-and-certs.md)); **`buickd`** does not create them. |
+| **`http`** | HTTP listen address. Default **`:80`** when omitted and TLS applies, or when both **`http`** and **`https`** are omitted with TLS (see listener defaults). |
+| **`https`** | HTTPS listen address. Default **`:443`** when omitted if TLS applies. TLS is enabled when **`https`** is set in YAML, or when **`proxy.certs_path`** or **`certs.path`** is set (even to a custom directory). |
+| **`certs_path`** | Directory **`buickd`** loads **`localhost.pem`** and **`localhost-key.pem`** from. Default **`./dev/buick/certs`** when TLS applies and omitted. |
+
+TLS file paths are **never** listed as PEM paths in YAML: Buick derives **`(proxy.certs_path)/localhost.pem`** and **`(proxy.certs_path)/localhost-key.pem`** internally after load.
 
 ### Listener defaults
 
 If **`http`** and **`https`** are both omitted:
 
 - **`buickd`** defaults **`http`** to **`:80`**.
-- If **`cert_file`** and **`key_file`** are both set, **`https`** defaults to **`:443`**, so a minimal file can list only PEM paths plus **`services`**.
+- If TLS applies (**`https`** set, or **`proxy.certs_path`**, or **`certs.path`** present in YAML), **`https`** defaults to **`:443`**.
 
-If **`http`** is set but **`https`** is omitted and both PEM paths are set, **`https`** defaults to **`:443`**.
+If **`http`** is set but **`https`** is omitted and TLS applies, **`https`** defaults to **`:443`**.
 
 ## `services` (per hostname)
 
@@ -31,7 +39,7 @@ Each key is a hostname (or hostname with port; see matching below). The value de
 
 ### WebSockets
 
-**`Upgrade: websocket`** requests are forwarded automatically; no `websocket` field in YAML. Tune **`read_timeout`** / **`write_timeout`** only when you need non-default per-route values for metrics and documentation; the **168h** server floor still applies.
+**`Upgrade: websocket`** requests are forwarded automatically. Tune **`read_timeout`** / **`write_timeout`** only when you need non-default per-route values for metrics and documentation; the **168h** server floor still applies.
 
 ### Matching
 
@@ -43,6 +51,7 @@ On the upstream request, Buick sets **`X-Forwarded-Host`**, **`X-Forwarded-Proto
 
 ## Example shapes
 
-- **Minimal with TLS paths** (listeners default to `:80` / `:443`): see repository [`buick.yml`](../buick.yml).
-- **Host-only upstreams**: see [`buick.host.example.yml`](../buick.host.example.yml) in the repo root.
-- **Integration stack** (internal `:8080` / `:8443`): see [`tests/integration/buick.yml`](../tests/integration/buick.yml).
+- **Same host for init + daemon**: set **`certs.path`** and **`proxy.certs_path`** to the same directory (see repository [`buick.yml`](../buick.yml)).
+- **Docker**: host **`certs.path`** vs container **`proxy.certs_path`** (see [Docker and Compose](docker.md)).
+- **Host-only upstreams**: [`buick.host.example.yml`](../buick.host.example.yml).
+- **Integration stack**: [`tests/integration/buick.yml`](../tests/integration/buick.yml).

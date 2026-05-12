@@ -52,17 +52,16 @@ func ensureParentDirs(pemPaths ...string) error {
 }
 
 // GenerateAndTrust creates a local CA, issues a leaf TLS certificate for the
-// hostnames derived from cfg, writes leaf PEMs to cfg's cert_file/key_file,
-// writes the CA next to the leaf cert, and installs the CA using OS tools on
-// Windows, macOS, and Debian-like Linux (see internal/trust).
+// hostnames derived from cfg, writes leaf PEMs to the paths returned by
+// config.InitWritePEMPaths, writes the CA next to that leaf cert, and installs
+// the CA using OS tools on Windows, macOS, and Debian-like Linux (see internal/trust).
 func GenerateAndTrust(cfg *config.Root, o Options) error {
 	if cfg == nil {
 		return errors.New("config is nil")
 	}
-	certPath := filepath.Clean(strings.TrimSpace(cfg.Proxy.CertFile))
-	keyPath := filepath.Clean(strings.TrimSpace(cfg.Proxy.KeyFile))
-	if certPath == "" || keyPath == "" {
-		return errors.New("proxy.cert_file and proxy.key_file are required")
+	certPath, keyPath, err := config.InitWritePEMPaths(cfg)
+	if err != nil {
+		return err
 	}
 
 	if err := ensureParentDirs(certPath, keyPath); err != nil {
@@ -159,14 +158,18 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 }
 
 // Uninstall removes a previously installed Buick CA from trust stores using
-// buick-root-ca.pem next to the configured leaf cert.
+// buick-root-ca.pem next to the leaf cert path used for buick init writes
+// (config.InitWritePEMPaths).
 func Uninstall(cfg *config.Root, o Options) error {
 	if cfg == nil {
 		return errors.New("config is nil")
 	}
-	certPath := filepath.Clean(strings.TrimSpace(cfg.Proxy.CertFile))
+	certPath, _, err := config.InitWritePEMPaths(cfg)
+	if err != nil {
+		return err
+	}
 	if certPath == "" {
-		return errors.New("proxy.cert_file is required")
+		return errors.New("leaf cert directory is required")
 	}
 	caCertPath := filepath.Join(filepath.Dir(certPath), RootCAFileName)
 	return uninstallCAFile(caCertPath, o)
