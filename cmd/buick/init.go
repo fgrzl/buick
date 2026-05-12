@@ -11,6 +11,17 @@ import (
 	"github.com/fgrzl/buick/internal/initca"
 )
 
+const defaultInitConfigName = "buick.yml"
+
+func defaultInitConfigPath(wd string) (abs string, ok bool) {
+	p := filepath.Join(wd, defaultInitConfigName)
+	st, err := os.Stat(p)
+	if err == nil && !st.IsDir() {
+		return filepath.Clean(p), true
+	}
+	return "", false
+}
+
 func runInit(args []string) int {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	fs.Usage = func() {
@@ -23,7 +34,7 @@ func runInit(args []string) int {
 		fs.PrintDefaults()
 	}
 
-	configPath := fs.String("config", "", "path to buick YAML (e.g. compose.buick.yml)")
+	configPath := fs.String("config", "", "path to buick YAML (if omitted: buick.yml in the current directory)")
 	uninstall := fs.Bool("uninstall", false, "remove the Buick CA from trust stores (uses buick-root-ca.pem next to the leaf cert)")
 	skipTrust := fs.Bool("skip-trust", false, "write PEM files only; do not install the CA")
 	noFirefox := fs.Bool("no-firefox", false, "no-op (reserved); Firefox NSS is never modified by buick init")
@@ -31,14 +42,24 @@ func runInit(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "buick init: --config is required")
-		fs.Usage()
-		return 2
+	chosen := strings.TrimSpace(*configPath)
+	if chosen == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "buick init: working directory: %v\n", err)
+			return 2
+		}
+		var ok bool
+		chosen, ok = defaultInitConfigPath(wd)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "buick init: specify --config, or create %s in the current directory\n", defaultInitConfigName)
+			fs.Usage()
+			return 2
+		}
 	}
-	*configPath = filepath.Clean(strings.TrimSpace(*configPath))
+	chosen = filepath.Clean(chosen)
 
-	root, err := config.Load(*configPath)
+	root, err := config.Load(chosen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "buick init: load config: %v\n", err)
 		return 1

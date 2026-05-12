@@ -52,6 +52,9 @@ const (
 	defaultHTTPWriteTimeout = 60 * time.Second
 	defaultWSReadTimeout    = 168 * time.Hour
 	defaultWSWriteTimeout   = 168 * time.Hour
+
+	defaultListenHTTP  = ":80"
+	defaultListenHTTPS = ":443"
 )
 
 // Load reads and parses a YAML config file.
@@ -67,11 +70,41 @@ func Load(path string) (*Root, error) {
 	return &root, nil
 }
 
+// applyProxyDefaults sets standard listen addresses when http/https are omitted.
+// If both cert_file and key_file are set, https defaults to :443; http defaults
+// to :80 whenever it was omitted. Call before validating listener fields.
+func applyProxyDefaults(root *Root) {
+	if root == nil {
+		return
+	}
+	httpEmpty := strings.TrimSpace(root.Proxy.HTTP) == ""
+	httpsEmpty := strings.TrimSpace(root.Proxy.HTTPS) == ""
+	if !httpEmpty && !httpsEmpty {
+		return
+	}
+	hasCerts := strings.TrimSpace(root.Proxy.CertFile) != "" &&
+		strings.TrimSpace(root.Proxy.KeyFile) != ""
+
+	if httpEmpty && httpsEmpty {
+		if hasCerts {
+			root.Proxy.HTTP = defaultListenHTTP
+			root.Proxy.HTTPS = defaultListenHTTPS
+		} else {
+			root.Proxy.HTTP = defaultListenHTTP
+		}
+		return
+	}
+	if httpsEmpty && hasCerts {
+		root.Proxy.HTTPS = defaultListenHTTPS
+	}
+}
+
 // Validate checks proxy and service entries and returns resolved routes.
 func Validate(root *Root) ([]Resolved, error) {
 	if root == nil {
 		return nil, errors.New("config is nil")
 	}
+	applyProxyDefaults(root)
 	if strings.TrimSpace(root.Proxy.HTTP) == "" && strings.TrimSpace(root.Proxy.HTTPS) == "" {
 		return nil, errors.New("proxy: at least one of http or https must be set")
 	}

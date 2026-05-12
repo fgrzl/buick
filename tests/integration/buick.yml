@@ -1,0 +1,20 @@
+# buickd config for the integration Docker stack (../../compose.yml): HTTP/HTTPS on
+# :8080 / :8443 map to host 18080 / 18443. Upstreams use Compose DNS on network buick.
+proxy:
+  http: ":8080"
+  https: ":8443"
+  cert_file: "/etc/buick/certs/localhost.pem"
+  key_file: "/etc/buick/certs/localhost-key.pem"
+
+services:
+  service1.localhost:
+    target: "http://service1:8080"
+
+  service2.localhost:
+    target: "http://service2:8080"
+
+  service3.localhost:
+    target: "http://service3:8080"
+    websocket: true
+    read_timeout: "168h"
+    write_timeout: "168h"

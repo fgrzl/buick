@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -53,15 +54,34 @@ func TestShouldRejectConfigGivenEmptyServicesWhenValidate(t *testing.T) {
 	}
 }
 
-func TestShouldRejectConfigGivenNoListenersWhenValidate(t *testing.T) {
-	_, err := Validate(&Root{
-		Proxy: Proxy{HTTP: ""},
+func TestShouldApplyDefaultHTTPGivenEmptyListenersAndNoCertsWhenValidate(t *testing.T) {
+	root := &Root{
+		Proxy:    Proxy{},
+		Services: map[string]Service{"a": {Target: "http://127.0.0.1:1"}},
+	}
+	if _, err := Validate(root); err != nil {
+		t.Fatal(err)
+	}
+	if root.Proxy.HTTP != defaultListenHTTP {
+		t.Fatalf("http: got %q want %q", root.Proxy.HTTP, defaultListenHTTP)
+	}
+	if strings.TrimSpace(root.Proxy.HTTPS) != "" {
+		t.Fatalf("https: got %q want empty", root.Proxy.HTTPS)
+	}
+}
+
+func TestShouldApplyDefaultHTTPAndHTTPSGivenEmptyListenersAndCertPathsWhenValidate(t *testing.T) {
+	root := &Root{
+		Proxy: Proxy{CertFile: "c.pem", KeyFile: "k.pem"},
 		Services: map[string]Service{
-			"a": {Target: "http://x"},
+			"a": {Target: "http://127.0.0.1:1"},
 		},
-	})
-	if err == nil {
-		t.Fatal("expected error when no listeners")
+	}
+	if _, err := Validate(root); err != nil {
+		t.Fatal(err)
+	}
+	if root.Proxy.HTTP != defaultListenHTTP || root.Proxy.HTTPS != defaultListenHTTPS {
+		t.Fatalf("proxy: %+v", root.Proxy)
 	}
 }
 
@@ -186,6 +206,32 @@ func TestShouldReturnHostsInOrderGivenResolvedSliceWhenHostsFromResolvedCalled(t
 	got := HostsFromResolved(routes)
 	if !slices.Equal(got, []string{"b", "a"}) {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestShouldApplyListenDefaultsGivenYAMLWithOnlyCertsAndServicesWhenLoadAndValidate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "buick.yml")
+	raw := `
+proxy:
+  cert_file: "c.pem"
+  key_file: "k.pem"
+services:
+  a.localhost:
+    target: "http://127.0.0.1:1"
+`
+	if err := writeFile(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	root, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, err := Validate(root); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if root.Proxy.HTTP != defaultListenHTTP || root.Proxy.HTTPS != defaultListenHTTPS {
+		t.Fatalf("proxy: %+v", root.Proxy)
 	}
 }
 

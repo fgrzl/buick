@@ -1,12 +1,9 @@
-# Upstreams use Docker Compose service DNS names (same user-defined network as buickd).
-# For buickd on the host talking to processes on localhost, use http://127.0.0.1:<port>
-# targets instead (see buick.host.example.yml).
+# Minimal example: listeners default to :80 and :443 when cert_file + key_file are set.
+# mkdir -p dev/buick/certs && buick init
+# Targets use Compose DNS names on the same network as buickd; on the host use 127.0.0.1 (see buick.host.example.yml).
 proxy:
-  http: ":80"
-  https: ":443"
-  cert_file: "./certs/localhost.pem"
-  key_file: "./certs/localhost-key.pem"
-
+  cert_file: "./dev/buick/certs/localhost.pem"
+  key_file: "./dev/buick/certs/localhost-key.pem"
 services:
   service1.localhost:
     target: "http://service1:8080"
@@ -16,6 +13,3 @@ services:
 
   service3.localhost:
     target: "http://service3:8080"
-    websocket: true
-    read_timeout: "168h"
-    write_timeout: "168h"

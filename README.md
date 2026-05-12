@@ -57,13 +57,13 @@ go build -o buick ./cmd/buick
    ./buickd --config ./buick.host.example.yml
    ```
 
-4. **Optional TLS on the host:** `buick init --config …` (see [TLS for local HTTPS](#tls-for-local-https)). Use `buick init -h` for `--skip-trust`, `--uninstall`, etc.
+4. **Optional TLS on the host:** `buick init` with `--config …`, or run **`buick init`** from a directory that contains **`buick.yml`** (see [TLS for local HTTPS](#tls-for-local-https)). Use `buick init -h` for `--skip-trust`, `--uninstall`, etc.
 
 5. **Sanity check:**
 
    ```bash
    buick --check --config ./buick.host.example.yml
-   buick --print-routes --config ./compose.buick.yml
+   buick --print-routes --config ./tests/integration/buick.yml
    ```
 
 ---
@@ -73,8 +73,8 @@ go build -o buick ./cmd/buick
 | File | Purpose |
 |------|---------|
 | **`compose.yml`** | Integration stack: nginx backends `service1`–`service3`, **buickd** on `buick-integration`, host ports **18080** (HTTP) / **18443** (HTTPS). |
-| **`compose.buick.yml`** | Config **inside** that stack: listens **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams like **`http://service1:8080`**. |
-| **`buick.yml`** | Same upstream style as Compose; **`./certs/`** for bind-mounts or host-generated PEMs. |
+| **`tests/integration/buick.yml`** | **buickd** config for the integration stack: **`:8080` / `:8443`**, certs under **`/etc/buick/certs/`**, upstreams like **`http://service1:8080`**. |
+| **`buick.yml`** | Minimal sample: **`cert_file`** / **`key_file`** under **`./dev/buick/certs/`**, **`services`** with Compose-style upstreams; **`http`**/**`https`** default to **`:80`** / **`:443`** when omitted. |
 | **`buick.host.example.yml`** | **buickd on the host**, upstreams on **`127.0.0.1`**. Copy or merge into your own file. |
 
 ### Sample stack (Docker)
@@ -95,9 +95,11 @@ Then use **http://127.0.0.1:18080/** with `Host: service1.localhost`, or add **`
 
 | Field | Meaning |
 |-------|---------|
-| **`http`** | HTTP listen address. Examples often use **`:80`**. Omit to disable. |
-| **`https`** | HTTPS listen address. Examples often use **`:443`**. Omit to disable. |
+| **`http`** | HTTP listen address (e.g. **`:80`**). |
+| **`https`** | HTTPS listen address (e.g. **`:443`**). |
 | **`cert_file` / `key_file`** | PEM paths for HTTPS. If **both** exist they are reused; if **either** is missing, **buickd** can generate a dev self-signed pair (see [TLS](#tls-for-local-https)). |
+
+If **`http`** and **`https`** are both omitted, **`buickd`** defaults **`http`** to **`:80`**. If **`cert_file`** and **`key_file`** are both set, **`https`** also defaults to **`:443`**, so a minimal file can list only PEM paths plus **`services`**. If **`http`** is set but **`https`** is omitted and both PEM paths are set, **`https`** defaults to **`:443`**.
 
 ### `services` (per hostname)
 
@@ -144,7 +146,7 @@ Send **`SIGHUP`** to reload the route table from the same **`--config`** file (c
 
 ## TLS for local HTTPS
 
-**Recommended on the host:** run **`buick init --config …`** once. It creates a small local CA, issues a leaf for hostnames in your YAML, writes `cert_file` / `key_file`, and installs the CA via **OS tools** (Windows `certutil`, macOS `security` + keychain, Debian-like `update-ca-certificates`). Use **`--skip-trust`** and import **`buick-root-ca.pem`** manually if install fails. **Firefox NSS** is not modified; Chromium on Windows/macOS usually uses the OS store.
+**Recommended on the host:** run **`buick init`** once (with **`--config`** or a default **`buick.yml`** in the current directory). It creates a small local CA, issues a leaf for hostnames in your YAML, writes `cert_file` / `key_file`, and installs the CA via **OS tools** (Windows `certutil`, macOS `security` + keychain, Debian-like `update-ca-certificates`). Use **`--skip-trust`** and import **`buick-root-ca.pem`** manually if install fails. **Firefox NSS** is not modified; Chromium on Windows/macOS usually uses the OS store.
 
 With **`proxy.https`** set, **buickd** ensures PEMs exist at **`cert_file`** / **`key_file`**:
 
@@ -157,7 +159,7 @@ Without trusting the CA or leaf, browsers will warn until you import trust or sw
 
 ## Docker Compose recipe
 
-This repo ships **`compose.yml`** + **`compose.buick.yml`** for the [integration stack](#integration-tests-docker). For day-to-day use, a published image is enough: the image [defaults](cmd/buickd/Dockerfile) to **`--config /etc/buick/buick.yml`**, so you do not need a **`command:`** line if you mount the config there.
+This repo ships **`compose.yml`** and **`tests/integration/buick.yml`** for the [integration stack](#integration-tests-docker). For day-to-day use, a published image is enough: the image [defaults](cmd/buickd/Dockerfile) to **`--config /etc/buick/buick.yml`**, so you do not need a **`command:`** line if you mount the config there.
 
 ### Minimal `docker-compose.yml`
 
@@ -196,7 +198,7 @@ services:
 
 **buickd** listens on **80** / **443** here; upstreams use **8080**, **8081**, etc. on the host so nothing collides with the proxy ports.
 
-If **buickd** runs in the **same** Compose project as your APIs, attach both to one user-defined network and use **`http://service1:8080`**-style targets (see **`buick.yml`** / **`compose.buick.yml`**). Then you usually do not need **`extra_hosts`**.
+If **buickd** runs in the **same** Compose project as your APIs, attach both to one user-defined network and use **`http://service1:8080`**-style targets (see **`buick.yml`**). Then you usually do not need **`extra_hosts`**.
 
 ### Optional Compose snippets
 
@@ -222,6 +224,8 @@ buick init --config ./dev/buick.yml
 docker compose up -d
 ```
 
+From a directory that contains **`buick.yml`**, **`buick init`** alone uses that file.
+
 **Without `buick init`**, pick one:
 
 1. **buickd-generated self-signed** — After first start, trust **`./dev/buick/certs/localhost.pem`** (or your configured filenames) in the OS or Firefox. Existing PEMs are reused until deleted.
@@ -239,7 +243,7 @@ docker compose up -d
 
 ## Integration tests (Docker)
 
-**`compose.yml`** runs three **nginx** backends (`service1`–`service3`; configs under **`tests/integration/nginx/`**) and **buickd** from **`cmd/buickd/Dockerfile`**. **buickd** uses **`compose.buick.yml`** (internal **8080** / **8443**; published **18080** / **18443**). **buickd** runs as **`user: "0:0"`** there so it can write TLS into the **`buick_certs`** volume on first boot.
+**`compose.yml`** runs three **nginx** backends (`service1`–`service3`; configs under **`tests/integration/nginx/`**) and **buickd** from **`cmd/buickd/Dockerfile`**. **buickd** loads **`tests/integration/buick.yml`** (internal **8080** / **8443**; published **18080** / **18443**). **buickd** runs as **`user: "0:0"`** there so it can write TLS into the **`buick_certs`** volume on first boot.
 
 ```bash
 docker compose up -d --build
