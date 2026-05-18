@@ -13,7 +13,7 @@ import (
 
 func main() {
 	dir := filepath.Join("tests", "integration", "certs")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		log.Fatal(err)
 	}
 	cert := filepath.Join(dir, "localhost.pem")

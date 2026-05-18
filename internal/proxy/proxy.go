@@ -35,7 +35,7 @@ type Router struct {
 type upstreamPool struct {
 	proxies []*httputil.ReverseProxy
 	targets []*url.URL
-	next    atomic.Uint64
+	next    atomic.Int32
 }
 
 // NewRouter builds a handler table from validated routes.
@@ -144,12 +144,11 @@ func newUpstreamPool(r config.Resolved, log *slog.Logger) *upstreamPool {
 }
 
 func (p *upstreamPool) pick() int {
-	n := uint64(len(p.proxies))
+	n := len(p.proxies)
 	if n == 0 {
 		return 0
 	}
-	i := p.next.Add(1)
-	return int((i - 1) % n)
+	return int(p.next.Add(1)-1) % n
 }
 
 func newReverseProxy(target *url.URL, log *slog.Logger) *httputil.ReverseProxy {

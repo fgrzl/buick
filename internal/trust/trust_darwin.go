@@ -12,6 +12,10 @@ import (
 )
 
 func installDarwin(caPEM string) error {
+	abs, err := validatePEMPath(caPEM)
+	if err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -20,7 +24,11 @@ func installDarwin(caPEM string) error {
 	if _, err := os.Stat(kc); err != nil {
 		return fmt.Errorf("login keychain: %w", err)
 	}
-	return run("security", "add-trusted-cert", "-r", "trustRoot", "-k", kc, caPEM)
+	cmd := exec.CommandContext(context.Background(), "security", "add-trusted-cert", "-r", "trustRoot", "-k", kc, abs)
+	if err := combinedOutput(cmd); err != nil {
+		return fmt.Errorf("security add-trusted-cert: %w", err)
+	}
+	return nil
 }
 
 func uninstallDarwin() error {

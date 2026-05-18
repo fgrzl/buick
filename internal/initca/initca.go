@@ -44,7 +44,7 @@ func ensureParentDirs(pemPaths ...string) error {
 			continue
 		}
 		seen[d] = struct{}{}
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o750); err != nil {
 			return fmt.Errorf("mkdir %q: %w", d, err)
 		}
 	}
@@ -109,10 +109,10 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 		return err
 	}
 
-	if err := writePEM(caCertPath, "CERTIFICATE", caDER, 0o644); err != nil {
+	if err := writePEM(caCertPath, "CERTIFICATE", caDER); err != nil {
 		return err
 	}
-	if err := writePEM(caKeyPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(caKey), 0o600); err != nil {
+	if err := writePEM(caKeyPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(caKey)); err != nil {
 		return err
 	}
 
@@ -140,10 +140,10 @@ func GenerateAndTrust(cfg *config.Root, o Options) error {
 		return fmt.Errorf("create leaf cert: %w", err)
 	}
 
-	if err := writePEM(certPath, "CERTIFICATE", leafDER, 0o644); err != nil {
+	if err := writePEM(certPath, "CERTIFICATE", leafDER); err != nil {
 		return err
 	}
-	if err := writePEM(keyPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(leafKey), 0o600); err != nil {
+	if err := writePEM(keyPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(leafKey)); err != nil {
 		return err
 	}
 
@@ -189,9 +189,9 @@ func uninstallCAFile(caCertPath string, o Options) error {
 	return nil
 }
 
-func writePEM(path, blockType string, der []byte, mode os.FileMode) error {
+func writePEM(path, blockType string, der []byte) error {
 	b := pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der})
-	return os.WriteFile(path, b, mode)
+	return os.WriteFile(path, b, 0o600)
 }
 
 func splitNames(names []string) (dns []string, ips []net.IP) {

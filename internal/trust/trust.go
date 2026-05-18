@@ -1,11 +1,9 @@
 package trust
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 )
@@ -68,14 +66,3 @@ func Uninstall(caCertPath string, _ Options) error {
 	}
 }
 
-func run(name string, arg ...string) error {
-	cmd := exec.CommandContext(context.Background(), name, arg...)
-	out, err := cmd.CombinedOutput()
-	if len(out) > 0 {
-		_, _ = fmt.Fprint(os.Stderr, string(out))
-	}
-	if err != nil {
-		return fmt.Errorf("%s %v: %w", name, arg, err)
-	}
-	return nil
-}

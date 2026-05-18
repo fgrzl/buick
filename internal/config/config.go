@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/fgrzl/buick/internal/fileutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -74,7 +74,7 @@ const (
 
 // Load reads and parses a YAML config file.
 func Load(path string) (*Root, error) {
-	data, err := os.ReadFile(path)
+	data, err := fileutil.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -173,12 +173,12 @@ func shouldDeriveLeanTLS(root *Root) bool {
 
 // expandLeanCertConfig sets certs.path and proxy.certs_path defaults, then fills
 // internal CertFile / KeyFile from (proxy.certs_path)/localhost.pem when TLS applies.
-func expandLeanCertConfig(root *Root) error {
+func expandLeanCertConfig(root *Root) {
 	if root == nil {
-		return nil
+		return
 	}
 	if !shouldDeriveLeanTLS(root) {
-		return nil
+		return
 	}
 	if strings.TrimSpace(root.Certs.Path) == "" {
 		root.Certs.Path = defaultCertsWriteDir
@@ -189,7 +189,6 @@ func expandLeanCertConfig(root *Root) error {
 	base := filepath.Clean(root.Proxy.CertsPath)
 	root.Proxy.CertFile = filepath.Join(base, leanLeafCert)
 	root.Proxy.KeyFile = filepath.Join(base, leanLeafKey)
-	return nil
 }
 
 // applyProxyDefaults sets standard listen addresses when http/https are omitted.
@@ -229,9 +228,7 @@ func Validate(root *Root) ([]Resolved, error) {
 	if root == nil {
 		return nil, errors.New("config is nil")
 	}
-	if err := expandLeanCertConfig(root); err != nil {
-		return nil, err
-	}
+	expandLeanCertConfig(root)
 	applyProxyDefaults(root)
 	if strings.TrimSpace(root.Proxy.HTTP) == "" && strings.TrimSpace(root.Proxy.HTTPS) == "" {
 		return nil, errors.New("proxy: at least one of http or https must be set")

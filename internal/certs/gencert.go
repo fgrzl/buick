@@ -34,13 +34,13 @@ func EnsureDevPair(certFile, keyFile string, dnsNames []string) (generated bool,
 
 	cdir := filepath.Dir(certFile)
 	if cdir != "" && cdir != "." {
-		if err := os.MkdirAll(cdir, 0o755); err != nil {
+		if err := os.MkdirAll(cdir, 0o750); err != nil {
 			return false, fmt.Errorf("mkdir cert dir: %w", err)
 		}
 	}
 	kdir := filepath.Dir(keyFile)
 	if kdir != "" && kdir != "." && kdir != cdir {
-		if err := os.MkdirAll(kdir, 0o755); err != nil {
+		if err := os.MkdirAll(kdir, 0o750); err != nil {
 			return false, fmt.Errorf("mkdir key dir: %w", err)
 		}
 	}
@@ -100,7 +100,7 @@ func EnsureDevPair(certFile, keyFile string, dnsNames []string) (generated bool,
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
-	if err := os.WriteFile(certFile, certPEM, 0o644); err != nil {
+	if err := os.WriteFile(certFile, certPEM, 0o600); err != nil {
 		return false, fmt.Errorf("write cert: %w", err)
 	}
 	if err := os.WriteFile(keyFile, keyPEM, 0o600); err != nil {
